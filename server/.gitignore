@@ -1,0 +1,5 @@
+/bin/
+/clash/*
+/cmd/*/__*
+/res/web/*
+/*.db
