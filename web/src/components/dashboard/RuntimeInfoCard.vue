@@ -64,7 +64,7 @@ import {
 import type { CoreConfig } from '@/types/api'
 
 const systemStore = useSystemStore()
-const { memory, subscribe } = useWebSocket()
+const { memory } = useWebSocket()
 
 const loading = ref(true)
 const coreConfig = ref<CoreConfig>({
@@ -97,7 +97,6 @@ const fetchConfig = async () => {
 onMounted(async () => {
   await fetchConfig()
   await systemStore.fetchSystemInfo()
-  subscribe(['memory'])
 })
 </script>
 

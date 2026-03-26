@@ -90,11 +90,10 @@ import ActiveSubscriptionCard from '@/components/dashboard/ActiveSubscriptionCar
 import RuntimeInfoCard from '@/components/dashboard/RuntimeInfoCard.vue'
 
 const systemStore = useSystemStore()
-const { traffic, connections, subscribe } = useWebSocket()
+const { traffic, connections } = useWebSocket()
 const { isMobile } = useBreakpoint()
 
 onMounted(() => {
-  subscribe(['connections'])
 })
 </script>
 

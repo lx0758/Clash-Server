@@ -37,11 +37,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 
-const { logs, connect, disconnect, subscribe, unsubscribe, clearLogs } = useWebSocket()
+const { logs, clearLogs } = useWebSocket()
 
 const searchQuery = ref('')
 
@@ -89,13 +89,6 @@ const handleClearLogs = () => {
 }
 
 onMounted(() => {
-  connect()
-  subscribe(['logs'])
-})
-
-onUnmounted(() => {
-  unsubscribe(['logs'])
-  disconnect()
 })
 </script>
 

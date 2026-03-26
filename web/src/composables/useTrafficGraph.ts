@@ -79,13 +79,12 @@ const maxDown = computed(() => {
 })
 
 export function useTrafficGraph() {
-  const { traffic, subscribe } = useWebSocket()
+  const { traffic } = useWebSocket()
 
   onMounted(() => {
     refCount.value++
     if (!initialized.value) {
       initialized.value = true
-      subscribe(['traffic'])
     }
     startWatcher(traffic)
   })

@@ -24,7 +24,7 @@ import { Upload, Download, Cpu } from '@element-plus/icons-vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { formatBytes } from '@/utils/format'
 
-const { traffic, memory, subscribe } = useWebSocket()
+const { traffic, memory } = useWebSocket()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const historyUp = ref<number[]>([])
@@ -122,8 +122,6 @@ const animate = () => {
 }
 
 onMounted(() => {
-  subscribe(['traffic', 'memory'])
-  
   const canvas = canvasRef.value
   if (canvas) {
     const dpr = window.devicePixelRatio || 1

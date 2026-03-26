@@ -5,7 +5,7 @@
       <div class="header-actions">
         <el-tag size="default" type="warning">
           <el-icon class="el-icon--left"><Link /></el-icon>
-          {{ filteredConnections.length }} 个
+          {{ activeCount }} 个
         </el-tag>
         <el-button type="danger" size="default" @click="closeAll">关闭所有</el-button>
       </div>
@@ -29,10 +29,12 @@
         v-for="conn in filteredConnections"
         :key="conn.id"
         class="connection-item"
+        :class="{ 'is-disconnected': conn.disconnected }"
       >
         <div class="conn-main">
           <div class="conn-host">
             <span class="conn-time" v-if="conn.start">{{ formatStartTime(conn.start) }}</span><span class="conn-separator"> - </span>{{ conn.metadata?.host || conn.metadata?.process || '未知' }}
+            <el-tag v-if="conn.disconnected" type="info" size="small">已断开</el-tag>
           </div>
           <div class="conn-info-row primary">
             {{ conn.metadata?.network || 'TCP' }} / {{ conn.metadata?.type || '-' }} / {{ conn.metadata?.destinationIP || conn.metadata?.host || '-' }}:{{ conn.metadata?.destinationPort || '-' }}
@@ -52,7 +54,14 @@
               {{ formatBytes(conn.download || 0) }}
             </span>
           </div>
-          <el-button type="danger" size="small" plain class="close-btn" @click="closeConnection(conn.id)">
+          <el-button
+            v-if="!conn.disconnected"
+            type="danger"
+            size="small"
+            plain
+            class="close-btn"
+            @click="closeConnection(conn.id)"
+          >
             关闭
           </el-button>
         </div>
@@ -62,20 +71,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Search, Link } from '@element-plus/icons-vue'
 import { connectionApi } from '@/api/connection'
 import { useWebSocket } from '@/composables/useWebSocket'
 
-const { connections, connect, disconnect, subscribe, unsubscribe } = useWebSocket()
+const { connections } = useWebSocket()
 
 const searchQuery = ref('')
 
+const activeCount = computed(() => {
+  return connections.value?.connections?.length || 0
+})
+
 const filteredConnections = computed(() => {
-  const list = connections.value?.connections || []
-  if (!searchQuery.value) return list
+  const active = connections.value?.connections || []
+  const history = connections.value?.history || []
+  const combined = [...active, ...history]
+  if (!searchQuery.value) return combined
   const query = searchQuery.value.toLowerCase()
-  return list.filter(conn => {
+  return combined.filter(conn => {
     const host = conn.metadata?.host || conn.metadata?.process || ''
     const chain = (conn.chains || []).join(' ')
     const rule = conn.rule || ''
@@ -86,13 +101,6 @@ const filteredConnections = computed(() => {
 })
 
 onMounted(() => {
-  connect()
-  subscribe(['connections'])
-})
-
-onUnmounted(() => {
-  unsubscribe(['connections'])
-  disconnect()
 })
 
 const closeConnection = async (id: string) => {
@@ -170,6 +178,15 @@ h2 {
   background: #f8fafc;
 }
 
+.connection-item.is-disconnected {
+  opacity: 0.7;
+  background: #f8fafc;
+}
+
+.connection-item.is-disconnected:hover {
+  background: #f1f5f9;
+}
+
 .conn-main {
   flex: 1;
   min-width: 0;
@@ -200,7 +217,7 @@ h2 {
 }
 
 .conn-time {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 400;
   color: #64748b;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;

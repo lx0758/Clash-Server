@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { Traffic, CoreStatus, ConnectionsData, LogData, MemoryData } from '@/types/api'
+import type { Traffic, CoreStatus, Connection, LogData, MemoryData } from '@/types/api'
 import { useSystemStore } from '@/stores/system'
 
 type MessageType = 'traffic' | 'connections' | 'logs' | 'core_status' | 'memory'
@@ -9,15 +9,23 @@ interface WebSocketMessage {
   data: unknown
 }
 
+interface ConnectionsState {
+  connections: Connection[]
+  history: Connection[]
+  downloadTotal: number
+  uploadTotal: number
+}
+
 const ws = ref<WebSocket | null>(null)
 const connected = ref(false)
 const traffic = ref<Traffic>({ up: 0, down: 0 })
 const coreStatus = ref<CoreStatus>({ running: false })
-const connections = ref<ConnectionsData>({ connections: [], downloadTotal: 0, uploadTotal: 0 })
+const connections = ref<ConnectionsState>({ connections: [], history: [], downloadTotal: 0, uploadTotal: 0 })
 const logs = ref<LogData[]>([])
 const memory = ref<MemoryData>({ inuse: 0, oslimit: 0 })
-const subscribedTypes = ref<Set<MessageType>>(new Set(['traffic', 'core_status']))
+const subscribedTypes = ref<Set<MessageType>>(new Set(['traffic', 'connections', 'logs', 'core_status', 'memory']))
 let reconnectTimer: number | null = null
+let previousConnectionIds = new Set<string>()
 
 const connect = () => {
   if (ws.value && ws.value.readyState === WebSocket.OPEN) {
@@ -59,9 +67,31 @@ const connect = () => {
       case 'traffic':
         traffic.value = msg.data as Traffic
         break
-      case 'connections':
-        connections.value = msg.data as ConnectionsData
+      case 'connections': {
+        const data = msg.data as { connections: Connection[], downloadTotal: number, uploadTotal: number }
+        const newConnectionIds = new Set(data.connections.map(c => c.id))
+        const disconnectedConnections: Connection[] = []
+        for (const id of previousConnectionIds) {
+          if (!newConnectionIds.has(id)) {
+            const lastState = connections.value.connections.find(c => c.id === id) ||
+                             connections.value.history.find(c => c.id === id)
+            if (lastState) {
+              disconnectedConnections.push({ ...lastState, disconnected: true })
+            }
+          }
+        }
+        previousConnectionIds = newConnectionIds
+        const existingHistoryIds = new Set(connections.value.history.map(c => c.id))
+        const newHistory = disconnectedConnections.filter(c => !existingHistoryIds.has(c.id))
+        const history = [...newHistory, ...connections.value.history].slice(0, 500)
+        connections.value = {
+          connections: data.connections,
+          history,
+          downloadTotal: data.downloadTotal,
+          uploadTotal: data.uploadTotal,
+        }
         break
+      }
       case 'logs':
         const logData = msg.data as LogData
         logs.value = [logData, ...logs.value].slice(0, 500)

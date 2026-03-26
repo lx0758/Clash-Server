@@ -136,6 +136,14 @@ export interface Connection {
   chains?: string[]
   rule?: string
   rulePayload?: string
+  disconnected?: boolean
+}
+
+export interface ConnectionsData {
+  connections: Connection[]
+  history: Connection[]
+  downloadTotal: number
+  uploadTotal: number
 }
 
 export interface Traffic {
