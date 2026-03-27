@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -29,6 +30,11 @@ func NewSubscriptionScheduler() *SubscriptionScheduler {
 }
 
 func (s *SubscriptionScheduler) Start() error {
+	s.mu.Lock()
+	s.stopChan = make(chan struct{})
+	s.timers = make(map[uint]*time.Timer)
+	s.mu.Unlock()
+
 	subs, err := s.repo.FindAll()
 	if err != nil {
 		return err
@@ -71,6 +77,9 @@ func (s *SubscriptionScheduler) scheduleRefresh(sub *model.Subscription) {
 	if sub.Interval <= 0 {
 		return
 	}
+	if sub.SourceType != model.SourceTypeRemote {
+		return
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -79,10 +88,32 @@ func (s *SubscriptionScheduler) scheduleRefresh(sub *model.Subscription) {
 		return
 	}
 
-	interval := time.Duration(sub.Interval) * time.Minute
-	timer := time.AfterFunc(interval, func() {
-		s.refreshSubscription(sub)
-		s.scheduleRefresh(sub)
+	var nextRefresh time.Duration
+	now := time.Now()
+
+	if sub.LastRefresh != nil {
+		nextRefreshTime := sub.LastRefresh.Add(time.Duration(sub.Interval) * time.Minute)
+		if now.After(nextRefreshTime) || now.Equal(nextRefreshTime) {
+			nextRefresh = time.Duration(5 * time.Minute)
+		} else {
+			nextRefresh = time.Until(nextRefreshTime)
+		}
+	} else {
+		nextRefresh = time.Duration(sub.Interval) * time.Minute
+	}
+
+	subID := sub.ID
+	timer := time.AfterFunc(nextRefresh, func() {
+		updatedSub, err := s.repo.FindByID(subID)
+		if err != nil {
+			log.Printf("[Scheduler] Failed to find subscription %d: %v", subID, err)
+			return
+		}
+		s.mu.Lock()
+		delete(s.timers, subID)
+		s.mu.Unlock()
+		s.refreshSubscription(updatedSub)
+		s.scheduleRefresh(updatedSub)
 	})
 
 	s.timers[sub.ID] = timer
@@ -95,8 +126,13 @@ func (s *SubscriptionScheduler) refreshSubscription(sub *model.Subscription) {
 	default:
 	}
 
-	if _, err := s.subService.Refresh(sub.ID); err != nil {
+	result, err := s.subService.Refresh(sub.ID)
+	if err != nil {
+		log.Printf("[Scheduler] Failed to refresh subscription %d: %v", sub.ID, err)
 		return
+	}
+	if result.Error != "" {
+		log.Printf("[Scheduler] Subscription %d refresh error: %s", sub.ID, result.Error)
 	}
 
 	if sub.Active {
