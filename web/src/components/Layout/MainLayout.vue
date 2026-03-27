@@ -49,6 +49,9 @@
             退出
           </el-button>
         </div>
+        <div class="version-section" v-if="!isCollapsed" @click="copyVersion">
+          <span class="version-value">{{ appVersion }}</span>
+        </div>
         <el-button
           :icon="isCollapsed ? Expand : Fold"
           @click="toggleCollapse"
@@ -154,6 +157,7 @@ import {
 } from '@element-plus/icons-vue'
 import TrafficIndicator from '@/components/dashboard/TrafficIndicator.vue'
 import SidebarTraffic from '@/components/Layout/SidebarTraffic.vue'
+import { versionApi } from '@/api/version'
 
 const route = useRoute()
 const router = useRouter()
@@ -163,6 +167,7 @@ const { connect, disconnect } = useWebSocket()
 
 const isCollapsed = ref(localStorage.getItem('sidebar-collapsed') === 'true')
 const drawerVisible = ref(false)
+const appVersion = ref(import.meta.env.VITE_APP_VERSION || 'dev')
 
 const currentRoute = computed(() => route.path)
 
@@ -176,6 +181,25 @@ const logout = async () => {
   router.push('/login')
 }
 
+const copyVersion = async () => {
+  try {
+    await navigator.clipboard.writeText(appVersion.value)
+  } catch {
+    // ignore
+  }
+}
+
+const fetchVersion = async () => {
+  try {
+    const res = await versionApi.getVersion()
+    if (res.data?.data?.version) {
+      appVersion.value = res.data.data.version
+    }
+  } catch {
+    // use build-time version
+  }
+}
+
 watch(isMobile, (mobile) => {
   if (mobile) {
     drawerVisible.value = false
@@ -184,6 +208,7 @@ watch(isMobile, (mobile) => {
 
 onMounted(() => {
   connect()
+  fetchVersion()
 })
 
 onUnmounted(() => {
@@ -265,6 +290,25 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.version-section {
+  display: flex;
+  justify-content: center;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-top: 1px solid #e2e8f0;
+}
+
+.version-section:hover {
+  background: #f8fafc;
+}
+
+.version-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  font-family: 'SF Mono', monospace;
 }
 
 .header {

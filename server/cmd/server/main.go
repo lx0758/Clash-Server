@@ -63,6 +63,7 @@ func main() {
 		api.POST("/init", authHandler.InitPassword)
 		api.POST("/session", authHandler.Login)
 		api.DELETE("/session", authHandler.Logout)
+		api.GET("/version", handler.GetVersion)
 	}
 	protected := api.Group("")
 	protected.Use(middleware.AuthRequired())
