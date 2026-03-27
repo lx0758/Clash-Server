@@ -80,6 +80,7 @@ func main() {
 		protected.POST("/subscriptions/:id/refresh", subHandler.Refresh)
 		protected.PUT("/subscriptions/:id/activate", subHandler.Activate)
 		protected.GET("/subscriptions/:id/merged-config", subHandler.GetMergedConfig)
+		protected.GET("/subscriptions/:id/content", subHandler.GetContent)
 		protected.PUT("/subscriptions/:id/content", subHandler.UpdateContent)
 		subRuleHandler := handler.NewSubRuleHandler()
 		protected.GET("/subscriptions/:id/rules", subRuleHandler.List)

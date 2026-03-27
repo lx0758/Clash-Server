@@ -68,6 +68,7 @@ declare module 'vue' {
     SidebarTraffic: typeof import('./src/components/Layout/SidebarTraffic.vue')['default']
     StatCard: typeof import('./src/components/dashboard/StatCard.vue')['default']
     SubscriptionCard: typeof import('./src/components/SubscriptionCard.vue')['default']
+    SubscriptionContentEditor: typeof import('./src/components/SubscriptionContentEditor.vue')['default']
     SubscriptionEditDialog: typeof import('./src/components/SubscriptionEditDialog.vue')['default']
     TrafficGraph: typeof import('./src/components/dashboard/TrafficGraph.vue')['default']
     TrafficIndicator: typeof import('./src/components/dashboard/TrafficIndicator.vue')['default']

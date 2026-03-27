@@ -92,7 +92,7 @@ func (s *SubscriptionService) Create(sub *model.Subscription) error {
 		sub.Interval = 0
 		sub.UseProxy = false
 		sub.SkipCert = false
-	} 
+	}
 	if sub.SourceType == model.SourceTypeRemote {
 		err := s.fetch(sub)
 		if err != nil {
@@ -154,6 +154,7 @@ func (s *SubscriptionService) UpdateContent(id uint, content string) error {
 		return err
 	}
 	sub.Content = content
+	sub.NodeCount = s.countNodes(content)
 	return s.repo.Update(sub)
 }
 

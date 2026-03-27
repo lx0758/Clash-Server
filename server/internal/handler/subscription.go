@@ -250,6 +250,22 @@ func (h *SubscriptionHandler) GetMergedConfig(c *gin.Context) {
 	}))
 }
 
+func (h *SubscriptionHandler) GetContent(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusOK, response.BadRequest("无效的订阅ID"))
+		return
+	}
+	sub, err := h.subService.Get(uint(id))
+	if err != nil {
+		c.JSON(http.StatusOK, response.NotFound("订阅不存在"))
+		return
+	}
+	c.JSON(http.StatusOK, response.Success(gin.H{
+		"content": sub.Content,
+	}))
+}
+
 type UpdateContentRequest struct {
 	Content string `json:"content" binding:"required"`
 }

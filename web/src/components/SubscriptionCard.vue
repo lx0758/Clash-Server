@@ -36,8 +36,11 @@
                     <el-dropdown-item @click.stop="$emit('scripts')">
                       <el-icon><Notebook /></el-icon>脚本 ({{ scriptCount }})
                     </el-dropdown-item>
+                    <el-dropdown-item @click.stop="$emit('content')">
+                      <el-icon><Tickets /></el-icon>查看源文件
+                    </el-dropdown-item>
                     <el-dropdown-item v-if="subscription.active" @click.stop="$emit('mergedConfig')">
-                      <el-icon><View /></el-icon>查看配置
+                      <el-icon><View /></el-icon>查看合并配置
                     </el-dropdown-item>
                     <el-dropdown-item divided @click.stop="$emit('delete')">
                       <el-icon color="#ef4444"><Delete /></el-icon>
@@ -49,12 +52,15 @@
             </div>
           </div>
           <div class="meta-row">
-            <el-tag :type="subscription.source_type === 'remote' ? '' : 'warning'" size="small" effect="plain">
+            <el-tag :type="subscription.source_type === 'remote' ? 'info' : 'warning'" size="small" effect="plain">
               {{ subscription.source_type === 'remote' ? '远程订阅' : '本地配置' }}
             </el-tag>
             <span v-if="subscription.node_count" class="meta-item">{{ subscription.node_count }} 节点</span>
             <span v-if="subscription.source_type === 'remote' && subscription.last_refresh" class="meta-item">
               {{ formatRelativeTime(subscription.last_refresh) }}更新
+            </span>
+            <span v-else-if="subscription.source_type === 'local' && subscription.updated_at" class="meta-item">
+              {{ formatRelativeTime(subscription.updated_at) }}编辑
             </span>
           </div>
         </div>
@@ -85,6 +91,12 @@
                   <span class="detail-value">{{ formatRelativeTime(subscription.last_refresh) }}</span>
                 </div>
               </template>
+              <template v-else>
+                <div class="detail-item">
+                  <span class="detail-label">上次编辑</span>
+                  <span class="detail-value">{{ subscription.updated_at ? formatRelativeTime(subscription.updated_at) : '从未编辑' }}</span>
+                </div>
+              </template>
               <div class="detail-item">
                 <span class="detail-label">创建时间</span>
                 <span class="detail-value">{{ formatDateTime(subscription.created_at) }}</span>
@@ -113,7 +125,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, Edit, Refresh, Document, Notebook, View, Delete } from '@element-plus/icons-vue'
+import { ArrowDown, Edit, Refresh, Document, Notebook, View, Delete, Tickets } from '@element-plus/icons-vue'
 import type { Subscription } from '@/types/api'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { useBreakpoint } from '@/composables/useBreakpoint'
@@ -136,6 +148,7 @@ defineEmits<{
   rules: []
   scripts: []
   mergedConfig: []
+  content: []
 }>()
 
 const expanded = ref(false)

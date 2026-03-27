@@ -39,6 +39,7 @@
             @rules="openRuleEditor(sub)"
             @scripts="openScriptDialog(sub)"
             @merged-config="openMergedConfig(sub)"
+            @content="openContentEditor(sub)"
           />
         </div>
       </template>
@@ -72,6 +73,13 @@
       :subscription-name="currentSubscriptionName"
       @close="closeScriptDialog"
     />
+
+    <SubscriptionContentEditor
+      v-if="showContentEditor && contentEditorSub"
+      :subscription="contentEditorSub"
+      @close="closeContentEditor"
+      @saved="handleContentSaved"
+    />
   </div>
 </template>
 
@@ -86,6 +94,7 @@ import SubscriptionEditDialog from '@/components/SubscriptionEditDialog.vue'
 import MergedConfigDialog from '@/components/MergedConfigDialog.vue'
 import RuleEditorDialog from '@/components/RuleEditorDialog.vue'
 import ScriptEditorDialog from '@/components/ScriptEditorDialog.vue'
+import SubscriptionContentEditor from '@/components/SubscriptionContentEditor.vue'
 
 const loading = ref(false)
 const initialLoading = ref(true)
@@ -103,8 +112,10 @@ const mergedConfigYaml = ref('')
 
 const showRuleDialog = ref(false)
 const showScriptDialog = ref(false)
+const showContentEditor = ref(false)
 const currentSubscriptionId = ref(0)
 const currentSubscriptionName = ref('')
+const contentEditorSub = ref<Subscription | null>(null)
 
 onMounted(() => {
   fetchSubs()
@@ -254,6 +265,21 @@ const openScriptDialog = (sub: Subscription) => {
 const closeScriptDialog = () => {
   showScriptDialog.value = false
   fetchCounts(currentSubscriptionId.value)
+}
+
+const openContentEditor = (sub: Subscription) => {
+  contentEditorSub.value = sub
+  showContentEditor.value = true
+}
+
+const closeContentEditor = () => {
+  showContentEditor.value = false
+  contentEditorSub.value = null
+}
+
+const handleContentSaved = async () => {
+  await fetchSubs()
+  ElMessage.success('内容已保存')
 }
 </script>
 
