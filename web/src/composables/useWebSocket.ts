@@ -37,6 +37,7 @@ const connect = () => {
 
   ws.value.onopen = () => {
     connected.value = true
+    previousConnectionIds = new Set()
     if (reconnectTimer) {
       window.clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -49,6 +50,8 @@ const connect = () => {
   ws.value.onclose = () => {
     connected.value = false
     ws.value = null
+    connections.value = { connections: [], history: [], downloadTotal: 0, uploadTotal: 0 }
+    previousConnectionIds = new Set()
     if (!reconnectTimer) {
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = null
@@ -68,8 +71,9 @@ const connect = () => {
         traffic.value = msg.data as Traffic
         break
       case 'connections': {
-        const data = msg.data as { connections: Connection[], downloadTotal: number, uploadTotal: number }
-        const newConnectionIds = new Set(data.connections.map(c => c.id))
+        const rawData = msg.data as { connections: Connection[] | null, downloadTotal: number, uploadTotal: number }
+        const connList = rawData.connections || []
+        const newConnectionIds = new Set(connList.map(c => c.id))
         const disconnectedConnections: Connection[] = []
         for (const id of previousConnectionIds) {
           if (!newConnectionIds.has(id)) {
@@ -85,10 +89,10 @@ const connect = () => {
         const newHistory = disconnectedConnections.filter(c => !existingHistoryIds.has(c.id))
         const history = [...newHistory, ...connections.value.history].slice(0, 500)
         connections.value = {
-          connections: data.connections,
+          connections: connList,
           history,
-          downloadTotal: data.downloadTotal,
-          uploadTotal: data.uploadTotal,
+          downloadTotal: rawData.downloadTotal,
+          uploadTotal: rawData.uploadTotal,
         }
         break
       }
