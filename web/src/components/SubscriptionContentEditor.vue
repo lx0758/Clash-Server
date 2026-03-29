@@ -4,6 +4,7 @@
     :title="readonly ? '查看源文件' : '编辑内容'"
     :width="isMobile ? '100%' : '700px'"
     :fullscreen="isMobile"
+    :close-on-click-modal="false"
     @close="$emit('close')"
   >
     <div v-if="loading" class="loading-state">
@@ -12,8 +13,8 @@
     </div>
     <template v-else>
       <div class="header-actions">
-        <el-button @click="copyContent">复制</el-button>
-        <el-button v-if="!readonly" @click="downloadContent">下载</el-button>
+        <el-button size="small" @click="copyContent">复制</el-button>
+        <el-button size="small" @click="downloadContent">下载</el-button>
         <span class="content-info">
           <span class="char-count">{{ content.length }} 字符</span>
           <span v-if="readonly" class="readonly-hint">只读</span>
@@ -30,7 +31,6 @@
     </template>
 
     <template #footer>
-      <el-button @click="$emit('close')">关闭</el-button>
       <el-button v-if="!readonly" type="primary" :loading="saving" @click="handleSave">
         保存
       </el-button>

@@ -254,6 +254,16 @@ func (cs *CoreService) SetMode(mode string) error {
 	return cs.apiRequest("PATCH", "/configs", map[string]string{"mode": mode})
 }
 
+func (cs *CoreService) HotReload(yamlConfig string) error {
+	payload := map[string]string{"path": "", "payload": yamlConfig}
+	return cs.apiRequest("PUT", "/configs?force=true", payload, nil)
+}
+
+func (cs *CoreService) SoftRestart(yamlConfig string) error {
+	payload := map[string]string{"path": "", "payload": yamlConfig}
+	return cs.apiRequest("POST", "/restart", payload, nil)
+}
+
 func (cs *CoreService) apiRequest(method, path string, body interface{}, result ...interface{}) error {
 	coreCfg := config.GetCoreConfig()
 	apiURL := fmt.Sprintf("http://%s:%d%s", coreCfg.APIHost, coreCfg.APIPort, path)
@@ -285,7 +295,10 @@ func (cs *CoreService) apiRequest(method, path string, body interface{}, result 
 	}
 	defer resp.Body.Close()
 	log.Printf("[CoreService] API response: %s %s -> %d", method, path, resp.StatusCode)
-	if len(result) > 0 && resp.StatusCode == http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("API request failed")
+	}
+	if len(result) > 0 && result[0] != nil {
 		return json.NewDecoder(resp.Body).Decode(result[0])
 	}
 	return nil
@@ -586,14 +599,12 @@ func (cs *CoreService) ApplyConfig() ApplyConfigResult {
 	cs.mu.Unlock()
 
 	if !cs.needsRestart(cs.getLastConfig(), mergedConfig) {
-		if err := cs.HotReload(yamlConfig); err == nil {
-			return ApplyConfigResult{HotReloaded: true}
-		}
+		err = cs.HotReload(yamlConfig)
+		return ApplyConfigResult{HotReloaded: true, Error: err}
+	} else {
+		err = cs.SoftRestart(yamlConfig)
+		return ApplyConfigResult{HotReloaded: true, Error: err}
 	}
-	if err := cs.SoftRestart(yamlConfig); err == nil {
-		return ApplyConfigResult{Restarted: true}
-	}
-	return ApplyConfigResult{Error: err}
 }
 
 func (cs *CoreService) getLastConfig() map[string]interface{} {
@@ -603,14 +614,4 @@ func (cs *CoreService) getLastConfig() map[string]interface{} {
 		return cs.lastConfig
 	}
 	return make(map[string]interface{})
-}
-
-func (cs *CoreService) HotReload(yamlConfig string) error {
-	payload := map[string]string{"path": "", "payload": yamlConfig}
-	return cs.apiRequest("PUT", "/configs?force=true", payload, nil)
-}
-
-func (cs *CoreService) SoftRestart(yamlConfig string) error {
-	payload := map[string]string{"path": "", "payload": yamlConfig}
-	return cs.apiRequest("POST", "/restart", payload, nil)
 }

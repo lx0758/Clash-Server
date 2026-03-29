@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"clash-server/internal/config"
@@ -13,9 +14,8 @@ import (
 )
 
 type MergerService struct {
-	subRepo     *repository.SubscriptionRepository
-	ruleService *RuleService
-	scriptRepo  *repository.ScriptRepository
+	subRepo           *repository.SubscriptionRepository
+	customizationRepo *repository.CustomizationRepository
 }
 
 var (
@@ -26,9 +26,8 @@ var (
 func GetMergerService() *MergerService {
 	mergerOnce.Do(func() {
 		mergerInstance = &MergerService{
-			subRepo:     repository.NewSubscriptionRepository(),
-			ruleService: NewRuleService(),
-			scriptRepo:  repository.NewScriptRepository(),
+			subRepo:           repository.NewSubscriptionRepository(),
+			customizationRepo: repository.NewCustomizationRepository(),
 		}
 	})
 	return mergerInstance
@@ -59,30 +58,32 @@ func (m *MergerService) MergeForSubscription(subscriptionID uint) (map[string]in
 	} else {
 		baseConfig = make(map[string]interface{})
 	}
-	insertRules, err := m.ruleService.GetInsertRules(subscriptionID)
+
+	customization, err := m.customizationRepo.FindBySubscriptionID(subscriptionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get insert rules: %w", err)
+		customization = nil
 	}
-	appendRules, err := m.ruleService.GetAppendRules(subscriptionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get append rules: %w", err)
+
+	if customization != nil {
+		baseConfig = m.applyRemoveOperations(baseConfig, customization)
+		baseConfig = m.applyInsertOperations(baseConfig, customization)
+		baseConfig = m.applyAppendOperations(baseConfig, customization)
 	}
-	baseConfig = m.applyInsertRules(baseConfig, insertRules)
+
 	baseConfig = m.applyCoreConfig(baseConfig)
-	baseConfig = m.applyAppendRules(baseConfig, appendRules)
-	scripts, err := m.scriptRepo.FindEnabledBySubscriptionID(subscriptionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get scripts: %w", err)
-	}
-	result := baseConfig
-	engine := script.NewEngine()
-	for _, scr := range scripts {
-		result, err = engine.Execute(scr.Content, result)
+
+	if customization != nil {
+		baseConfig, err = m.applyGlobalOverride(baseConfig, customization)
 		if err != nil {
-			return nil, fmt.Errorf("failed to execute script %s: %w", scr.Name, err)
+			return nil, fmt.Errorf("全局配置错误: %w", err)
+		}
+		baseConfig, err = m.applyScript(baseConfig, customization)
+		if err != nil {
+			return nil, fmt.Errorf("脚本执行错误: %w", err)
 		}
 	}
-	return result, nil
+
+	return baseConfig, nil
 }
 
 func (m *MergerService) GetMinimalConfig() map[string]interface{} {
@@ -115,42 +116,216 @@ func (m *MergerService) applyCoreConfig(cfg map[string]interface{}) map[string]i
 	return cfg
 }
 
-func (m *MergerService) applyInsertRules(config map[string]interface{}, rules []model.Rule) map[string]interface{} {
-	if len(rules) == 0 {
-		return config
-	}
-	ruleStrings := make([]interface{}, 0, len(rules))
-	for _, rule := range rules {
-		ruleStrings = append(ruleStrings, fmt.Sprintf("%s,%s,%s", rule.Type, rule.Payload, rule.Proxy))
-	}
-	if existingRules, ok := config["rules"].([]interface{}); ok {
-		config["rules"] = append(ruleStrings, existingRules...)
-	} else {
-		config["rules"] = ruleStrings
-	}
+func (m *MergerService) applyRemoveOperations(config map[string]interface{}, customization *model.SubscriptionCustomization) map[string]interface{} {
+	config = m.removeProxies(config, customization.ProxyRemove)
+	config = m.removeProxyGroups(config, customization.ProxyGroupRemove)
+	config = m.removeRules(config, customization.RuleRemove)
 	return config
 }
 
-func (m *MergerService) applyAppendRules(config map[string]interface{}, rules []model.Rule) map[string]interface{} {
-	if len(rules) == 0 {
-		return config
-	}
-	ruleStrings := make([]interface{}, 0, len(rules))
-	for _, rule := range rules {
-		ruleStrings = append(ruleStrings, fmt.Sprintf("%s,%s,%s", rule.Type, rule.Payload, rule.Proxy))
-	}
-	if existingRules, ok := config["rules"].([]interface{}); ok {
-		config["rules"] = append(existingRules, ruleStrings...)
-	} else {
-		config["rules"] = ruleStrings
-	}
+func (m *MergerService) applyInsertOperations(config map[string]interface{}, customization *model.SubscriptionCustomization) map[string]interface{} {
+	config = m.insertProxies(config, customization.ProxyInsert)
+	config = m.insertProxyGroups(config, customization.ProxyGroupInsert)
+	config = m.insertRules(config, customization.RuleInsert)
 	return config
 }
 
-func (m *MergerService) applyPanelConfig(config map[string]interface{}, panelConfig map[string]interface{}) map[string]interface{} {
-	for key, value := range panelConfig {
+func (m *MergerService) applyAppendOperations(config map[string]interface{}, customization *model.SubscriptionCustomization) map[string]interface{} {
+	config = m.appendProxies(config, customization.ProxyAppend)
+	config = m.appendProxyGroups(config, customization.ProxyGroupAppend)
+	config = m.appendRules(config, customization.RuleAppend)
+	return config
+}
+
+func (m *MergerService) applyGlobalOverride(config map[string]interface{}, customization *model.SubscriptionCustomization) (map[string]interface{}, error) {
+	if customization.GlobalOverride == "" {
+		return config, nil
+	}
+	var override map[string]interface{}
+	if err := yaml.Unmarshal([]byte(customization.GlobalOverride), &override); err != nil {
+		return nil, fmt.Errorf("全局配置 YAML 格式错误: %w", err)
+	}
+	for key, value := range override {
 		config[key] = value
 	}
+	return config, nil
+}
+
+func (m *MergerService) applyScript(config map[string]interface{}, customization *model.SubscriptionCustomization) (map[string]interface{}, error) {
+	if strings.TrimSpace(customization.Script) == "" {
+		return config, nil
+	}
+	engine := script.NewEngine()
+	result, err := engine.Execute(customization.Script, config)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (m *MergerService) parseYAMLArray(yamlStr string) []interface{} {
+	if yamlStr == "" {
+		return nil
+	}
+	var items []interface{}
+	if err := yaml.Unmarshal([]byte(yamlStr), &items); err != nil {
+		return nil
+	}
+	return items
+}
+
+func (m *MergerService) removeProxies(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	names := m.parseYAMLArray(yamlStr)
+	if len(names) == 0 {
+		return config
+	}
+	removeSet := make(map[string]bool)
+	for _, name := range names {
+		if s, ok := name.(string); ok {
+			removeSet[s] = true
+		}
+	}
+	proxies, ok := config["proxies"].([]interface{})
+	if !ok {
+		return config
+	}
+	var newProxies []interface{}
+	for _, p := range proxies {
+		if proxy, ok := p.(map[string]interface{}); ok {
+			if name, ok := proxy["name"].(string); ok {
+				if !removeSet[name] {
+					newProxies = append(newProxies, p)
+				}
+			} else {
+				newProxies = append(newProxies, p)
+			}
+		} else {
+			newProxies = append(newProxies, p)
+		}
+	}
+	config["proxies"] = newProxies
+	return config
+}
+
+func (m *MergerService) insertProxies(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["proxies"].([]interface{})
+	config["proxies"] = append(items, existing...)
+	return config
+}
+
+func (m *MergerService) appendProxies(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["proxies"].([]interface{})
+	config["proxies"] = append(existing, items...)
+	return config
+}
+
+func (m *MergerService) removeProxyGroups(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	names := m.parseYAMLArray(yamlStr)
+	if len(names) == 0 {
+		return config
+	}
+	removeSet := make(map[string]bool)
+	for _, name := range names {
+		if s, ok := name.(string); ok {
+			removeSet[s] = true
+		}
+	}
+	groups, ok := config["proxy-groups"].([]interface{})
+	if !ok {
+		return config
+	}
+	var newGroups []interface{}
+	for _, g := range groups {
+		if group, ok := g.(map[string]interface{}); ok {
+			if name, ok := group["name"].(string); ok {
+				if !removeSet[name] {
+					newGroups = append(newGroups, g)
+				}
+			} else {
+				newGroups = append(newGroups, g)
+			}
+		} else {
+			newGroups = append(newGroups, g)
+		}
+	}
+	config["proxy-groups"] = newGroups
+	return config
+}
+
+func (m *MergerService) insertProxyGroups(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["proxy-groups"].([]interface{})
+	config["proxy-groups"] = append(items, existing...)
+	return config
+}
+
+func (m *MergerService) appendProxyGroups(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["proxy-groups"].([]interface{})
+	config["proxy-groups"] = append(existing, items...)
+	return config
+}
+
+func (m *MergerService) removeRules(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	rulesToRemove := m.parseYAMLArray(yamlStr)
+	if len(rulesToRemove) == 0 {
+		return config
+	}
+	removeSet := make(map[string]bool)
+	for _, r := range rulesToRemove {
+		if s, ok := r.(string); ok {
+			removeSet[s] = true
+		}
+	}
+	rules, ok := config["rules"].([]interface{})
+	if !ok {
+		return config
+	}
+	var newRules []interface{}
+	for _, r := range rules {
+		if s, ok := r.(string); ok {
+			if !removeSet[s] {
+				newRules = append(newRules, r)
+			}
+		} else {
+			newRules = append(newRules, r)
+		}
+	}
+	config["rules"] = newRules
+	return config
+}
+
+func (m *MergerService) insertRules(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["rules"].([]interface{})
+	config["rules"] = append(items, existing...)
+	return config
+}
+
+func (m *MergerService) appendRules(config map[string]interface{}, yamlStr string) map[string]interface{} {
+	items := m.parseYAMLArray(yamlStr)
+	if len(items) == 0 {
+		return config
+	}
+	existing, _ := config["rules"].([]interface{})
+	config["rules"] = append(existing, items...)
 	return config
 }
 
@@ -164,7 +339,97 @@ func (m *MergerService) GenerateYAML(config map[string]interface{}) (string, err
 
 func (m *MergerService) Validate(config map[string]interface{}) error {
 	if _, ok := config["proxies"]; !ok {
-		return fmt.Errorf("missing proxies in config")
+		return fmt.Errorf("配置缺少 proxies 字段")
 	}
+	proxies, ok := config["proxies"].([]interface{})
+	if !ok {
+		return fmt.Errorf("proxies 必须是数组")
+	}
+
+	availableProxies := make(map[string]bool)
+	for _, p := range proxies {
+		proxy, ok := p.(map[string]interface{})
+		name := extractName(proxy, ok)
+		if name == "" {
+			return fmt.Errorf("节点缺少 name 字段")
+		}
+		if !ok {
+			return fmt.Errorf("节点 \"%s\" 格式错误", name)
+		}
+		availableProxies[name] = true
+	}
+
+	availableProxyGroups := make(map[string]bool)
+	var groups []interface{}
+	if g, ok := config["proxy-groups"].([]interface{}); ok {
+		groups = g
+		for _, g := range groups {
+			group, ok := g.(map[string]interface{})
+			name := extractName(group, ok)
+			if name == "" {
+				return fmt.Errorf("代理组缺少 name 字段")
+			}
+			if !ok {
+				return fmt.Errorf("代理组 \"%s\" 格式错误", name)
+			}
+			availableProxyGroups[name] = true
+		}
+	}
+
+	for _, g := range groups {
+		group, ok := g.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		groupName, _ := group["name"].(string)
+		if groupProxies, ok := group["proxies"].([]interface{}); ok {
+			for _, gp := range groupProxies {
+				proxyName, _ := gp.(string)
+				if proxyName == "" {
+					continue
+				}
+				if !availableProxies[proxyName] && !availableProxyGroups[proxyName] {
+					return fmt.Errorf("代理组 \"%s\" 引用了不存在的节点或策略组: \"%s\"", groupName, proxyName)
+				}
+			}
+		}
+	}
+
+	builtinTargets := map[string]bool{
+		"DIRECT":      true,
+		"REJECT":      true,
+		"REJECT-DROP": true,
+		"PASS":        true,
+		"COMPATIBLE":  true,
+	}
+
+	if rules, ok := config["rules"].([]interface{}); ok {
+		for _, r := range rules {
+			ruleStr, ok := r.(string)
+			if !ok {
+				return fmt.Errorf("规则格式错误，必须是字符串")
+			}
+			parts := strings.Split(ruleStr, ",")
+			if len(parts) < 2 {
+				return fmt.Errorf("规则格式错误: \"%s\"", ruleStr)
+			}
+			if len(parts) >= 3 {
+				target := parts[2]
+				if !availableProxies[target] && !availableProxyGroups[target] && !builtinTargets[target] {
+					return fmt.Errorf("规则引用了不存在的节点或策略组: \"%s\"", ruleStr)
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+func extractName(v map[string]interface{}, ok bool) string {
+	if ok {
+		if name, ok := v["name"].(string); ok {
+			return name
+		}
+	}
+	return ""
 }

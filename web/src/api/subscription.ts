@@ -11,7 +11,7 @@ export const subscriptionApi = {
   delete: (id: number) => request.delete<ApiResponse>(`/subscriptions/${id}`),
   refresh: (id: number) => request.post<ApiResponse<RefreshResult>>(`/subscriptions/${id}/refresh`, undefined, noTimeout),
   activate: (id: number) => request.put<ApiResponse>(`/subscriptions/${id}/activate`),
-  getMergedConfig: (id: number) => request.get<ApiResponse<MergedConfig>>(`/subscriptions/${id}/merged-config`),
+  getMerged: (id: number) => request.get<ApiResponse<MergedConfig>>(`/subscriptions/${id}/merged`),
   getContent: (id: number) => request.get<ApiResponse<{ content: string }>>(`/subscriptions/${id}/content`),
   updateContent: (id: number, content: string) => request.put<ApiResponse>(`/subscriptions/${id}/content`, { content }),
 }

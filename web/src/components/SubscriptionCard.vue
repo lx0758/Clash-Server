@@ -30,16 +30,13 @@
                     <el-dropdown-item v-if="subscription.source_type === 'remote'" @click.stop="$emit('refresh')">
                       <el-icon><Refresh /></el-icon>刷新
                     </el-dropdown-item>
-                    <el-dropdown-item @click.stop="$emit('rules')">
-                      <el-icon><Document /></el-icon>规则 ({{ ruleCount }})
-                    </el-dropdown-item>
-                    <el-dropdown-item @click.stop="$emit('scripts')">
-                      <el-icon><Notebook /></el-icon>脚本 ({{ scriptCount }})
-                    </el-dropdown-item>
                     <el-dropdown-item @click.stop="$emit('content')">
                       <el-icon><Tickets /></el-icon>查看源文件
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="subscription.active" @click.stop="$emit('mergedConfig')">
+                    <el-dropdown-item @click.stop="$emit('customize')">
+                      <el-icon><Setting /></el-icon>自定义配置
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.stop="$emit('mergedConfig')">
                       <el-icon><View /></el-icon>查看合并配置
                     </el-dropdown-item>
                     <el-dropdown-item divided @click.stop="$emit('delete')">
@@ -125,7 +122,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, Edit, Refresh, Document, Notebook, View, Delete, Tickets } from '@element-plus/icons-vue'
+import { ArrowDown, Edit, Refresh, Setting, View, Delete, Tickets } from '@element-plus/icons-vue'
 import type { Subscription } from '@/types/api'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { useBreakpoint } from '@/composables/useBreakpoint'
@@ -135,8 +132,6 @@ const { isMobile } = useBreakpoint()
 
 defineProps<{
   subscription: Subscription
-  ruleCount: number
-  scriptCount: number
   loading?: boolean
 }>()
 
@@ -145,8 +140,7 @@ defineEmits<{
   refresh: []
   edit: []
   delete: []
-  rules: []
-  scripts: []
+  customize: []
   mergedConfig: []
   content: []
 }>()

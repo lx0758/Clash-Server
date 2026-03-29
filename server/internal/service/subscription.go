@@ -18,16 +18,14 @@ import (
 )
 
 type SubscriptionService struct {
-	repo       *repository.SubscriptionRepository
-	ruleRepo   *repository.RuleRepository
-	scriptRepo *repository.ScriptRepository
+	repo              *repository.SubscriptionRepository
+	customizationRepo *repository.CustomizationRepository
 }
 
 func NewSubscriptionService() *SubscriptionService {
 	return &SubscriptionService{
-		repo:       repository.NewSubscriptionRepository(),
-		ruleRepo:   repository.NewRuleRepository(),
-		scriptRepo: repository.NewScriptRepository(),
+		repo:              repository.NewSubscriptionRepository(),
+		customizationRepo: repository.NewCustomizationRepository(),
 	}
 }
 
@@ -37,8 +35,6 @@ func (s *SubscriptionService) List() ([]model.Subscription, error) {
 
 type SubscriptionWithCounts struct {
 	Subscription *model.Subscription `json:"subscription"`
-	RuleCount    int                 `json:"rule_count"`
-	ScriptCount  int                 `json:"script_count"`
 }
 
 func (s *SubscriptionService) ListWithCounts() ([]SubscriptionWithCounts, error) {
@@ -49,12 +45,8 @@ func (s *SubscriptionService) ListWithCounts() ([]SubscriptionWithCounts, error)
 
 	results := make([]SubscriptionWithCounts, len(subs))
 	for i, sub := range subs {
-		ruleCount, _ := s.ruleRepo.CountBySubscriptionID(sub.ID)
-		scriptCount, _ := s.scriptRepo.CountBySubscriptionID(sub.ID)
 		results[i] = SubscriptionWithCounts{
 			Subscription: &sub,
-			RuleCount:    ruleCount,
-			ScriptCount:  scriptCount,
 		}
 	}
 	return results, nil
@@ -64,20 +56,16 @@ func (s *SubscriptionService) Get(id uint) (*model.Subscription, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *SubscriptionService) GetWithRelations(id uint) (*model.Subscription, []model.Rule, []model.Script, error) {
+func (s *SubscriptionService) GetWithRelations(id uint) (*model.Subscription, *model.SubscriptionCustomization, error) {
 	sub, err := s.repo.FindByID(id)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	rules, err := s.ruleRepo.FindBySubscriptionID(id)
+	customization, err := s.customizationRepo.FindBySubscriptionID(id)
 	if err != nil {
-		return nil, nil, nil, err
+		return sub, nil, nil
 	}
-	scripts, err := s.scriptRepo.FindBySubscriptionID(id)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return sub, rules, scripts, nil
+	return sub, customization, nil
 }
 
 func (s *SubscriptionService) Create(sub *model.Subscription) error {
@@ -159,12 +147,7 @@ func (s *SubscriptionService) UpdateContent(id uint, content string) error {
 }
 
 func (s *SubscriptionService) Delete(id uint) error {
-	if err := s.ruleRepo.DeleteBySubscriptionID(id); err != nil {
-		return err
-	}
-	if err := s.scriptRepo.DeleteBySubscriptionID(id); err != nil {
-		return err
-	}
+	_ = s.customizationRepo.DeleteBySubscriptionID(id)
 	return s.repo.Delete(id)
 }
 
@@ -284,7 +267,7 @@ func (s *SubscriptionService) Parse(content string) (map[string]interface{}, err
 	return config, nil
 }
 
-func (s *SubscriptionService) GetMergedConfig(id uint) (map[string]interface{}, string, error) {
+func (s *SubscriptionService) GetMerged(id uint) (map[string]interface{}, string, error) {
 	merger := GetMergerService()
 	config, err := merger.MergeForSubscription(id)
 	if err != nil {

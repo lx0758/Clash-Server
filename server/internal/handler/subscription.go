@@ -38,15 +38,14 @@ func (h *SubscriptionHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusOK, response.BadRequest("无效的订阅ID"))
 		return
 	}
-	sub, rules, scripts, err := h.subService.GetWithRelations(uint(id))
+	sub, customization, err := h.subService.GetWithRelations(uint(id))
 	if err != nil {
 		c.JSON(http.StatusOK, response.NotFound("订阅不存在"))
 		return
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{
-		"subscription": sub,
-		"rules":        rules,
-		"scripts":      scripts,
+		"subscription":  sub,
+		"customization": customization,
 	}))
 }
 
@@ -233,13 +232,13 @@ func (h *SubscriptionHandler) Refresh(c *gin.Context) {
 	}, coreErr))
 }
 
-func (h *SubscriptionHandler) GetMergedConfig(c *gin.Context) {
+func (h *SubscriptionHandler) GetMerged(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusOK, response.BadRequest("无效的订阅ID"))
 		return
 	}
-	config, yaml, err := h.subService.GetMergedConfig(uint(id))
+	config, yaml, err := h.subService.GetMerged(uint(id))
 	if err != nil {
 		c.JSON(http.StatusOK, response.InternalError("获取合并配置失败"))
 		return

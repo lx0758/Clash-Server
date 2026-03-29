@@ -38,8 +38,24 @@ export interface Subscription {
 
 export interface SubscriptionWithCounts {
   subscription: Subscription
-  rule_count: number
-  script_count: number
+}
+
+export interface Customization {
+  id: number
+  subscription_id: number
+  proxy_insert: string
+  proxy_append: string
+  proxy_remove: string
+  proxy_group_insert: string
+  proxy_group_append: string
+  proxy_group_remove: string
+  rule_insert: string
+  rule_append: string
+  rule_remove: string
+  global_override: string
+  script: string
+  created_at: string
+  updated_at: string
 }
 
 export interface Rule {
@@ -72,8 +88,7 @@ export interface MergedConfig {
 
 export interface SubscriptionDetail {
   subscription: Subscription
-  rules: Rule[]
-  scripts: Script[]
+  customization: Customization | null
 }
 
 export interface RefreshResult {

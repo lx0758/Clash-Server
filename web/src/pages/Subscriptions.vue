@@ -29,15 +29,12 @@
             v-for="sub in subscriptions"
             :key="sub.id"
             :subscription="sub"
-            :rule-count="ruleCounts[sub.id] || 0"
-            :script-count="scriptCounts[sub.id] || 0"
             :loading="loading"
             @activate="handleActivate(sub.id)"
             @refresh="handleRefresh(sub.id)"
             @edit="openEditDialog(sub)"
             @delete="handleDelete(sub.id)"
-            @rules="openRuleEditor(sub)"
-            @scripts="openScriptDialog(sub)"
+            @customize="openCustomizeDialog(sub)"
             @merged-config="openMergedConfig(sub)"
             @content="openContentEditor(sub)"
           />
@@ -60,18 +57,11 @@
       @close="closeMergedConfig"
     />
 
-    <RuleEditorDialog
-      v-if="showRuleDialog"
+    <CustomizationDialog
+      v-if="showCustomizeDialog"
       :subscription-id="currentSubscriptionId"
       :subscription-name="currentSubscriptionName"
-      @close="closeRuleDialog"
-    />
-
-    <ScriptEditorDialog
-      v-if="showScriptDialog"
-      :subscription-id="currentSubscriptionId"
-      :subscription-name="currentSubscriptionName"
-      @close="closeScriptDialog"
+      @close="closeCustomizeDialog"
     />
 
     <SubscriptionContentEditor
@@ -92,16 +82,13 @@ import type { Subscription } from '@/types/api'
 import SubscriptionCard from '@/components/SubscriptionCard.vue'
 import SubscriptionEditDialog from '@/components/SubscriptionEditDialog.vue'
 import MergedConfigDialog from '@/components/MergedConfigDialog.vue'
-import RuleEditorDialog from '@/components/RuleEditorDialog.vue'
-import ScriptEditorDialog from '@/components/ScriptEditorDialog.vue'
+import CustomizationDialog from '@/components/CustomizationDialog.vue'
 import SubscriptionContentEditor from '@/components/SubscriptionContentEditor.vue'
 
 const loading = ref(false)
 const initialLoading = ref(true)
 const coreError = ref('')
 const subscriptions = ref<Subscription[]>([])
-const ruleCounts = ref<Record<number, number>>({})
-const scriptCounts = ref<Record<number, number>>({})
 
 const showSubDialog = ref(false)
 const editingSub = ref<Subscription | null>(null)
@@ -110,11 +97,10 @@ const showMergedConfig = ref(false)
 const mergedConfigName = ref('')
 const mergedConfigYaml = ref('')
 
-const showRuleDialog = ref(false)
-const showScriptDialog = ref(false)
-const showContentEditor = ref(false)
+const showCustomizeDialog = ref(false)
 const currentSubscriptionId = ref(0)
 const currentSubscriptionName = ref('')
+const showContentEditor = ref(false)
 const contentEditorSub = ref<Subscription | null>(null)
 
 onMounted(() => {
@@ -124,30 +110,9 @@ onMounted(() => {
 const fetchSubs = async () => {
   try {
     const res = await subscriptionApi.list()
-    const items = res.data.data.subscriptions || []
-    subscriptions.value = items.map((item: any) => ({
-      ...item.subscription,
-      rule_count: item.rule_count,
-      script_count: item.script_count,
-    }))
-    for (const sub of subscriptions.value) {
-      ruleCounts.value[sub.id] = sub.rule_count || 0
-      scriptCounts.value[sub.id] = sub.script_count || 0
-    }
+    subscriptions.value = res.data.data.subscriptions?.map((item: any) => item.subscription) || []
   } finally {
     initialLoading.value = false
-  }
-}
-
-const fetchCounts = async (id: number) => {
-  try {
-    const res = await subscriptionApi.get(id)
-    const data = res.data.data
-    ruleCounts.value[id] = data.rules?.length || 0
-    scriptCounts.value[id] = data.scripts?.length || 0
-  } catch {
-    ruleCounts.value[id] = 0
-    scriptCounts.value[id] = 0
   }
 }
 
@@ -232,7 +197,7 @@ const handleDelete = async (id: number) => {
 
 const openMergedConfig = async (sub: Subscription) => {
   try {
-    const res = await subscriptionApi.getMergedConfig(sub.id)
+    const res = await subscriptionApi.getMerged(sub.id)
     mergedConfigName.value = sub.name
     mergedConfigYaml.value = res.data.data.yaml
     showMergedConfig.value = true
@@ -245,26 +210,14 @@ const closeMergedConfig = () => {
   showMergedConfig.value = false
 }
 
-const openRuleEditor = (sub: Subscription) => {
+const openCustomizeDialog = (sub: Subscription) => {
   currentSubscriptionId.value = sub.id
   currentSubscriptionName.value = sub.name
-  showRuleDialog.value = true
+  showCustomizeDialog.value = true
 }
 
-const closeRuleDialog = () => {
-  showRuleDialog.value = false
-  fetchCounts(currentSubscriptionId.value)
-}
-
-const openScriptDialog = (sub: Subscription) => {
-  currentSubscriptionId.value = sub.id
-  currentSubscriptionName.value = sub.name
-  showScriptDialog.value = true
-}
-
-const closeScriptDialog = () => {
-  showScriptDialog.value = false
-  fetchCounts(currentSubscriptionId.value)
+const closeCustomizeDialog = () => {
+  showCustomizeDialog.value = false
 }
 
 const openContentEditor = (sub: Subscription) => {

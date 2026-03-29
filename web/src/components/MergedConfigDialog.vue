@@ -4,11 +4,12 @@
     :title="'合并后配置 - ' + subscriptionName"
     :width="isMobile ? '100%' : '900px'"
     :fullscreen="isMobile"
+    :close-on-click-modal="false"
     @close="$emit('close')"
   >
     <div class="header-actions">
-      <el-button @click="copyYaml">复制 YAML</el-button>
-      <el-button @click="downloadYaml">下载文件</el-button>
+      <el-button size="small" @click="copyYaml">复制</el-button>
+      <el-button size="small" @click="downloadYaml">下载</el-button>
     </div>
     <div class="config-viewer">
       <pre><code>{{ yaml }}</code></pre>
