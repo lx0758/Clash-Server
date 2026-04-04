@@ -335,6 +335,12 @@ func (cs *CoreService) start() error {
 	}
 	workDirPath := filepath.Join(cwd, "clash")
 	binPath := getBinaryPath(workDirPath)
+	if binPath == "" {
+		cs.mu.Lock()
+		cs.lastError = fmt.Sprintf("core binary not found: %s", binPath)
+		cs.mu.Unlock()
+		return fmt.Errorf("core binary not found")
+	}
 
 	coreCfg := config.GetCoreConfig()
 	minimalConfig := fmt.Sprintf("external-controller: %s:%d", coreCfg.APIHost, coreCfg.APIPort)

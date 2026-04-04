@@ -1,0 +1,101 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 匹配以v开头的tag，例如v1.0.0
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'server/go.mod'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install build toolchain
+        run: |
+          sudo apt install -y make gcc mingw-w64
+
+      - name: Build
+        run: |
+          make init
+          make build
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            server/bin/*
+            server/clash/
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+
+      # https://github.com/actions/download-artifact
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Download Mihomo core
+        run: |
+          export LATEST_VERSION=$(curl "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
+          export LATEST_URL=https://github.com/MetaCubeX/mihomo/releases/download/${LATEST_VERSION}
+          # windows
+          wget ${LATEST_URL}/mihomo-windows-amd64-compatible-${LATEST_VERSION}.zip
+          unzip mihomo-windows-amd64-compatible-${LATEST_VERSION}.zip
+          mv mihomo-windows-amd64-compatible.exe mihomo-windows-amd64-compatible-${LATEST_VERSION}.exe
+          # linux
+          wget ${LATEST_URL}/mihomo-linux-amd64-compatible-${LATEST_VERSION}.gz
+          gunzip mihomo-linux-amd64-compatible-${LATEST_VERSION}.gz
+
+      - name: Package artifacts
+        run: |
+          ls -lh
+          # windows
+          mkdir -p clash-server-windows-amd64/
+          mv bin/clash-server-*.exe clash-server-windows-amd64/
+          cp -rf clash/ clash-server-windows-amd64/
+          cp -rf mihomo-windows-amd64-compatible-*.exe clash-server-windows-amd64/clash/
+          zip -r clash-server-windows-amd64-${{ github.ref_name }}.zip clash-server-windows-amd64/
+          # linux
+          mkdir -p clash-server-linux-amd64/
+          mv bin/clash-server-* clash-server-linux-amd64/
+          cp -rf clash/ clash-server-linux-amd64/
+          cp -rf mihomo-linux-amd64-compatible-* clash-server-linux-amd64/clash/
+          zip -r clash-server-linux-amd64-${{ github.ref_name }}.zip clash-server-linux-amd64/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          token: ${{ secrets.GHP_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            Release ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            clash-server-*

@@ -9,7 +9,14 @@ import (
 )
 
 func getBinaryPath(workDir string) string {
-	return filepath.Join(workDir, "mihomo.exe")
+	binary := ""
+	files, _ := filepath.Glob(filepath.Join(workDir, "mihomo*"))
+	for _, file := range files {
+		if filepath.Ext(file) == ".exe" {
+			binary = file
+		}
+	}
+	return binary
 }
 
 func setProcessDeathSignal(cmd *exec.Cmd) {

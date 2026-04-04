@@ -5,6 +5,8 @@ import (
 	"io/fs"
 )
 
+var Version = "dev"
+
 var (
 	//go:embed all:web/*
 	webEmbedFS     embed.FS
