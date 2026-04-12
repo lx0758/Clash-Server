@@ -1,4 +1,4 @@
-# Subscription Management Specification
+# 订阅管理规格说明
 
 ## Requirements
 

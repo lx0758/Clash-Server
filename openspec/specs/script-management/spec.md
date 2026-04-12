@@ -1,4 +1,4 @@
-# Script Management Specification
+# 脚本管理规格说明
 
 ## Requirements
 

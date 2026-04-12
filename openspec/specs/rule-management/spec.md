@@ -1,4 +1,4 @@
-# Rule Management Specification
+# 规则管理规格说明
 
 ## Requirements
 

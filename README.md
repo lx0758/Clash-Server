@@ -56,15 +56,15 @@
 
 | 主页 | 订阅管理 |
 |:---:|:---:|
-| ![主页](docs/screenshot-home.png) | ![订阅管理](docs/screenshot-subscription.png) |
+| ![主页](images/screenshot-home.png) | ![订阅管理](images/screenshot-subscription.png) |
 
 | 代理节点 | 连接管理 |
 |:---:|:---:|
-| ![代理节点](docs/screenshot-proxies.png) | ![连接管理](docs/screenshot-connections.png) |
+| ![代理节点](images/screenshot-proxies.png) | ![连接管理](images/screenshot-connections.png) |
 
 | 主页 | 订阅管理 | 代理节点 | 连接管理 |
 |:---:|:---:|:---:|:---:|
-| ![主页](docs/screenshot-home_small.png) | ![订阅管理](docs/screenshot-subscription_small.png) | ![代理节点](docs/screenshot-proxies_small.png) | ![连接管理](docs/screenshot-connections_small.png) |
+| ![主页](images/screenshot-home_small.png) | ![订阅管理](images/screenshot-subscription_small.png) | ![代理节点](images/screenshot-proxies_small.png) | ![连接管理](images/screenshot-connections_small.png) |
 
 ---
 
