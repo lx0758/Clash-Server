@@ -104,7 +104,7 @@ func (h *ConfigHandler) Update(c *gin.Context) {
 	}
 	coreCfg := config.GetCoreConfig()
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(gin.H{
+	c.JSON(http.StatusOK, responseWithCore(gin.H{
 		"core": gin.H{
 			"mode":       coreCfg.Mode,
 			"api_host":   coreCfg.APIHost,

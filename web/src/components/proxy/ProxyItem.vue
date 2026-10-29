@@ -8,7 +8,10 @@
     <div class="proxy-name">{{ proxy.name }}</div>
     <div class="proxy-meta">
       <span class="proxy-type">{{ proxy.type }}</span>
-      <span class="proxy-delay" :class="delayClass">
+      <span v-if="testing" class="proxy-delay testing">
+        <el-icon class="is-loading"><Loading /></el-icon>
+      </span>
+      <span v-else class="proxy-delay" :class="delayClass">
         {{ delayDisplay }}
       </span>
     </div>
@@ -17,12 +20,15 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import type { Proxy } from '@/types/api'
 import { useProxyFilter } from '@/composables/useProxyFilter'
 
 const props = defineProps<{
   proxy: Proxy
   selected?: boolean
+  /** 该节点是否正在测延迟 */
+  testing?: boolean
 }>()
 
 defineEmits<{
@@ -151,6 +157,12 @@ const delayClass = computed(() => {
 .proxy-delay.error {
   background: #fef2f2;
   color: #ef4444;
+}
+
+.proxy-delay.testing {
+  color: #3b82f6;
+  display: inline-flex;
+  align-items: center;
 }
 
 .proxy-delay.timeout {

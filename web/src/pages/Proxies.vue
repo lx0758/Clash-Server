@@ -27,6 +27,7 @@
                 :initial-filter-text="globalFilterText"
                 :initial-sort-type="globalSortType"
                 :is-mobile="isMobile"
+                :checking="isGroupChecking('GLOBAL')"
                 @update-filter="onGlobalFilterChange"
                 @update-sort="onGlobalSortChange"
                 @check-all="onCheckAllGlobal"
@@ -35,6 +36,7 @@
                 v-if="proxyStore.globalGroup"
                 :proxies="filteredGlobalProxies"
                 :selected-proxy="proxyStore.globalGroup?.now"
+                :testing-names="getTestingNames('GLOBAL')"
                 @select="onSelectGlobalProxy"
               />
             </div>
@@ -67,6 +69,7 @@
                     :initial-filter-text="proxyStore.getGroupState(group.name).filterText"
                     :initial-sort-type="proxyStore.getGroupState(group.name).sortType"
                     :is-mobile="isMobile"
+                    :checking="isGroupChecking(group.name)"
                     @update-filter="(text: string) => proxyStore.setGroupFilter(group.name, text)"
                     @update-sort="(type: string) => proxyStore.setGroupSort(group.name, type as any)"
                     @check-all="onCheckAll(group.name)"
@@ -74,7 +77,8 @@
                   <ProxyGrid
                     :proxies="getFilteredProxies(group)"
                     :selected-proxy="group.now"
-                    @select="(proxy: Proxy) => proxyStore.selectProxy(group.name, proxy.name)"
+                    :testing-names="getTestingNames(group.name)"
+                    @select="(proxy: Proxy) => onSelectProxy(group.name, proxy.name)"
                   />
                 </div>
               </el-collapse-item>
@@ -87,10 +91,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useProxyStore } from '@/stores/proxy'
+import { usePendingStore } from '@/stores/pending'
+import { useToastStore } from '@/stores/toast'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useProxyFilter } from '@/composables/useProxyFilter'
+import { useWebSocket } from '@/composables/useWebSocket'
 import type { SortType } from '@/stores/proxy'
 import type { Proxy, ProxyGroup } from '@/types/api'
 import ModeSwitcher from '@/components/proxy/ModeSwitcher.vue'
@@ -98,13 +105,63 @@ import ProxyHead from '@/components/proxy/ProxyHead.vue'
 import ProxyGrid from '@/components/proxy/ProxyGrid.vue'
 
 const proxyStore = useProxyStore()
+const pendingStore = usePendingStore()
+const toastStore = useToastStore()
 const { isMobile } = useBreakpoint()
 const { filterSort } = useProxyFilter()
+const { onDelay } = useWebSocket()
 
 const activeGroups = ref<string[]>([])
 
 const globalFilterText = ref('')
 const globalSortType = ref<SortType>('default')
+
+// 正在测延迟的节点名称, 按组归集
+const testingNodes = ref<Record<string, string[]>>({})
+
+// 测延迟超时兜底: 超过该时间未收到完成信号, 强制收敛状态
+const DELAY_TIMEOUT_MS = 30000
+const delayTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+const groupKey = (groupName: string) => `delay:${groupName}`
+
+const isGroupChecking = (groupName: string) => pendingStore.isPending(groupKey(groupName))
+
+const getTestingNames = (groupName: string) => testingNodes.value[groupName] || []
+
+const clearGroupTesting = (groupName: string) => {
+  testingNodes.value = { ...testingNodes.value, [groupName]: [] }
+  const timer = delayTimers.get(groupName)
+  if (timer) {
+    clearTimeout(timer)
+    delayTimers.delete(groupName)
+  }
+}
+
+/** 启动某组的逐节点测延迟 */
+const startDelayTest = async (groupName: string) => {
+  if (pendingStore.isPending(groupKey(groupName))) return
+
+  try {
+    const res = await proxyStore.startGroupDelayTest(groupName)
+    const nodes = res.data.data.nodes || []
+    // 立即标记该组全部节点为测速中, 各节点结果到达后逐个收敛
+    testingNodes.value = { ...testingNodes.value, [groupName]: [...nodes] }
+    pendingStore.start(groupKey(groupName))
+
+    // 超时兜底: 未收到完成信号时强制收敛, 避免节点永久转圈
+    const timer = setTimeout(() => {
+      if (pendingStore.isPending(groupKey(groupName))) {
+        clearGroupTesting(groupName)
+        pendingStore.finish(groupKey(groupName))
+        toastStore.warning('测延迟超时，部分节点未返回结果')
+      }
+    }, DELAY_TIMEOUT_MS)
+    delayTimers.set(groupName, timer)
+  } catch (e) {
+    toastStore.error(e instanceof Error ? e.message : '启动测延迟失败')
+  }
+}
 
 const filteredGlobalProxies = computed(() => {
   const group = proxyStore.globalGroup
@@ -129,16 +186,41 @@ onMounted(async () => {
   }
 })
 
+// 订阅测延迟结果, 各节点到达即更新
+const unsubscribeDelay = onDelay(async (result) => {
+  if (result.done) {
+    // 该组全部完成
+    clearGroupTesting(result.group)
+    pendingStore.finish(groupKey(result.group))
+    // 静默同步核心侧的延迟历史, 不触发整页骨架屏
+    try {
+      await proxyStore.syncAfterDelayTest()
+    } catch {
+      // 同步失败不打断用户
+    }
+    return
+  }
+
+  if (!result.name) return
+  proxyStore.handleDelayResult(result)
+  // 该节点完成, 从进行中列表移除
+  const group = result.group
+  const remaining = (testingNodes.value[group] || []).filter(n => n !== result.name)
+  testingNodes.value = { ...testingNodes.value, [group]: remaining }
+})
+
+onUnmounted(() => {
+  unsubscribeDelay()
+  delayTimers.forEach(timer => clearTimeout(timer))
+  delayTimers.clear()
+})
+
 const onModeChange = async () => {
   await proxyStore.setMode(proxyStore.mode)
 }
 
 const onCheckAll = async (groupName: string) => {
-  try {
-    await proxyStore.checkGroupDelay(groupName)
-  } catch (e) {
-    console.error('Failed to check delay:', e)
-  }
+  await startDelayTest(groupName)
 }
 
 const onGlobalFilterChange = (text: string) => {
@@ -150,15 +232,20 @@ const onGlobalSortChange = (type: SortType) => {
 }
 
 const onCheckAllGlobal = async () => {
-  try {
-    await proxyStore.checkGroupDelay('GLOBAL')
-  } catch (e) {
-    console.error('Failed to check delay:', e)
-  }
+  await startDelayTest('GLOBAL')
 }
 
 const onSelectGlobalProxy = async (proxy: Proxy) => {
-  await proxyStore.selectProxy('GLOBAL', proxy.name)
+  await onSelectProxy('GLOBAL', proxy.name)
+}
+
+/** 切换节点, 失败时回滚并提示 */
+const onSelectProxy = async (groupName: string, proxyName: string) => {
+  try {
+    await proxyStore.selectProxy(groupName, proxyName)
+  } catch (e) {
+    toastStore.error(e instanceof Error ? e.message : '切换节点失败')
+  }
 }
 </script>
 

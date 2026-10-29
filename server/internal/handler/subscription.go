@@ -97,7 +97,7 @@ func (h *SubscriptionHandler) Create(c *gin.Context) {
 	}
 
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(gin.H{"subscription": sub}, coreErr))
+	c.JSON(http.StatusOK, responseWithCore(gin.H{"subscription": sub}, coreErr))
 }
 
 type UpdateSubscriptionRequest struct {
@@ -152,7 +152,7 @@ func (h *SubscriptionHandler) Update(c *gin.Context) {
 	}
 
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(gin.H{"subscription": sub}, coreErr))
+	c.JSON(http.StatusOK, responseWithCore(gin.H{"subscription": sub}, coreErr))
 }
 
 func (h *SubscriptionHandler) Delete(c *gin.Context) {
@@ -187,7 +187,7 @@ func (h *SubscriptionHandler) Delete(c *gin.Context) {
 	}
 
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(nil, coreErr))
+	c.JSON(http.StatusOK, responseWithCore(nil, coreErr))
 }
 
 func (h *SubscriptionHandler) Activate(c *gin.Context) {
@@ -208,7 +208,7 @@ func (h *SubscriptionHandler) Activate(c *gin.Context) {
 	}
 
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(nil, coreErr))
+	c.JSON(http.StatusOK, responseWithCore(nil, coreErr))
 }
 
 func (h *SubscriptionHandler) Refresh(c *gin.Context) {
@@ -227,7 +227,7 @@ func (h *SubscriptionHandler) Refresh(c *gin.Context) {
 		return
 	}
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(gin.H{
+	c.JSON(http.StatusOK, responseWithCore(gin.H{
 		"subscription": result.Subscription,
 	}, coreErr))
 }
@@ -285,7 +285,7 @@ func (h *SubscriptionHandler) UpdateContent(c *gin.Context) {
 		return
 	}
 	coreErr := h.applyConfig()
-	c.JSON(http.StatusOK, response.SuccessWithCoreError(nil, coreErr))
+	c.JSON(http.StatusOK, responseWithCore(nil, coreErr))
 }
 
 func (h *SubscriptionHandler) applyConfig() string {

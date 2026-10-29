@@ -84,6 +84,11 @@ func GetCoreConfig() *CoreConfig {
 	} else if env := os.Getenv("CS_CORE_IPV6"); env != "" {
 		cfg.IPv6 = parseBool(env)
 	}
+	if v, err := coreRepo.Get("core:delay_concurrency"); err == nil && v != "" {
+		cfg.DelayConcurrency = parseInt(v)
+	} else if env := os.Getenv("CS_CORE_DELAY_CONCURRENCY"); env != "" {
+		cfg.DelayConcurrency = parseInt(env)
+	}
 	return cfg
 }
 
@@ -111,6 +116,9 @@ func applyCoreEnvVars(cfg *CoreConfig) {
 	}
 	if v := os.Getenv("CS_CORE_IPV6"); v != "" {
 		cfg.IPv6 = parseBool(v)
+	}
+	if v := os.Getenv("CS_CORE_DELAY_CONCURRENCY"); v != "" {
+		cfg.DelayConcurrency = parseInt(v)
 	}
 }
 

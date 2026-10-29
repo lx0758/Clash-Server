@@ -10,6 +10,7 @@ const (
 	TypeLogs        MessageType = "logs"
 	TypeCoreStatus  MessageType = "core_status"
 	TypeMemory      MessageType = "memory"
+	TypeDelay       MessageType = "delay"
 )
 
 type Message struct {
@@ -42,6 +43,16 @@ type LogData struct {
 type MemoryData struct {
 	Inuse   int64 `json:"inuse"`
 	Oslimit int64 `json:"oslimit"`
+}
+
+// DelayData 承载测延迟过程中单个节点的延迟结果。
+// Done 为 true 时表示该组的全部节点测试完成, 此时不携带 Name/Delay。
+type DelayData struct {
+	Group string `json:"group"`
+	Name  string `json:"name,omitempty"`
+	Delay int    `json:"delay,omitempty"`
+	Done  bool   `json:"done,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 type SubscribeRequest struct {

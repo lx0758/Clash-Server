@@ -14,11 +14,13 @@
                 v-if="!subscription.active"
                 type="primary"
                 :size="isMobile ? 'small' : 'default'"
+                :loading="pendingAction === 'activate'"
+                :disabled="loading && pendingAction !== 'activate'"
                 @click="$emit('activate')"
               >
                 激活
               </el-button>
-              <el-dropdown trigger="click">
+              <el-dropdown trigger="click" :disabled="loading">
                 <el-button :size="isMobile ? 'small' : 'default'">
                   操作 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
                 </el-button>
@@ -27,7 +29,11 @@
                     <el-dropdown-item @click.stop="$emit('edit')">
                       <el-icon><Edit /></el-icon>编辑
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="subscription.source_type === 'remote'" @click.stop="$emit('refresh')">
+                    <el-dropdown-item
+                      v-if="subscription.source_type === 'remote'"
+                      :disabled="loading"
+                      @click.stop="$emit('refresh')"
+                    >
                       <el-icon><Refresh /></el-icon>刷新
                     </el-dropdown-item>
                     <el-dropdown-item @click.stop="$emit('content')">
@@ -39,7 +45,7 @@
                     <el-dropdown-item @click.stop="$emit('mergedConfig')">
                       <el-icon><View /></el-icon>查看合并配置
                     </el-dropdown-item>
-                    <el-dropdown-item divided @click.stop="$emit('delete')">
+                    <el-dropdown-item divided :disabled="loading" @click.stop="$emit('delete')">
                       <el-icon color="#ef4444"><Delete /></el-icon>
                       <span style="color: #ef4444;">删除</span>
                     </el-dropdown-item>
@@ -53,7 +59,12 @@
               {{ subscription.source_type === 'remote' ? '远程订阅' : '本地配置' }}
             </el-tag>
             <span v-if="subscription.node_count" class="meta-item">{{ subscription.node_count }} 节点</span>
-            <span v-if="subscription.source_type === 'remote' && subscription.last_refresh" class="meta-item">
+            <!-- 有操作进行中时, 在更新时间位置显示操作状态 -->
+            <span v-if="pendingAction" class="meta-item pending-status">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              {{ pendingLabel }}
+            </span>
+            <span v-else-if="subscription.source_type === 'remote' && subscription.last_refresh" class="meta-item">
               {{ formatRelativeTime(subscription.last_refresh) }}更新
             </span>
             <span v-else-if="subscription.source_type === 'local' && subscription.updated_at" class="meta-item">
@@ -122,17 +133,21 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, Edit, Refresh, Setting, View, Delete, Tickets } from '@element-plus/icons-vue'
-import type { Subscription } from '@/types/api'
+import { computed } from 'vue'
+import { ArrowDown, Edit, Refresh, Setting, View, Delete, Tickets, Loading } from '@element-plus/icons-vue'
+import type { Subscription, PendingAction } from '@/types/api'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import TrafficInfo from './TrafficInfo.vue'
 
 const { isMobile } = useBreakpoint()
 
-defineProps<{
+const props = defineProps<{
   subscription: Subscription
+  /** 该订阅是否有操作正在进行 */
   loading?: boolean
+  /** 当前进行中的操作类型, 用于在更新时间位置显示具体状态 */
+  pendingAction?: PendingAction
 }>()
 
 defineEmits<{
@@ -147,6 +162,15 @@ defineEmits<{
 
 const expanded = ref(false)
 
+const pendingLabels: Record<PendingAction, string> = {
+  refresh: '更新中',
+  activate: '激活中',
+  delete: '删除中',
+  save: '保存中',
+}
+
+const pendingLabel = computed(() => (props.pendingAction ? pendingLabels[props.pendingAction] : ''))
+
 const toggleExpand = () => {
   expanded.value = !expanded.value
 }
@@ -160,6 +184,13 @@ const truncateUrl = (url: string) => {
 </script>
 
 <style scoped>
+.pending-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #3b82f6;
+}
+
 .subscription-card {
   margin-bottom: 16px;
   transition: all 0.2s ease;

@@ -96,6 +96,7 @@ func main() {
 		protected.PUT("/proxies/:name", proxyHandler.Select)
 		protected.GET("/proxies/:name/delay", proxyHandler.CheckDelay)
 		protected.GET("/proxies/group/:group/delay", proxyHandler.CheckGroupDelay)
+		protected.POST("/proxies/group/:group/delay-test", proxyHandler.StartGroupDelayTest)
 		protected.GET("/proxies/mode", proxyHandler.GetMode)
 		protected.PATCH("/proxies/mode", proxyHandler.SetMode)
 		connHandler := handler.NewConnectionHandler()

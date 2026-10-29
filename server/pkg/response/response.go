@@ -29,6 +29,29 @@ func SuccessWithCoreResult(data interface{}, msg string) Response {
 	return Response{Code: 0, Message: msg, Data: data}
 }
 
+// PartialSuccess 表示"数据已持久化但核心未生效"的半成功状态。
+//
+// 与完全失败的区别在于: 数据已经落库, 用户重试只会造成重复副作用,
+// 因此不能谎报成功(否则用户以为已生效), 也不能报完全错误
+// (否则用户会重试并造成重复副作用)。
+//
+// 该状态使用业务码 CodeCoreError(1007), 并在 data 中携带:
+//   - core_error:      核心未生效的原因
+//   - partial_success: 恒为 true, 客户端据此以警告语义提示
+func PartialSuccess(data interface{}, coreError string) Response {
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		// 非 map 类型的数据包一层, 保留原始数据
+		m = map[string]interface{}{"data": data}
+	}
+	m["core_error"] = coreError
+	m["partial_success"] = true
+	return Response{Code: CodeCoreError, Message: Msg[CodeCoreError], Data: m}
+}
+
 func NeedConfirmRestart(data interface{}, coreError string) Response {
 	if data == nil {
 		data = map[string]interface{}{}

@@ -237,3 +237,10 @@ export interface CoreStatus {
   version?: string
   error?: string
 }
+/**
+ * 订阅操作类型。
+ *
+ * 用于标识某个订阅当前正在进行的操作, 使界面能按对象粒度
+ * 展示进行中状态, 而不是一个全局的加载遮罩。
+ */
+export type PendingAction = 'refresh' | 'activate' | 'delete' | 'save'

@@ -5,6 +5,7 @@
       :key="proxy.name"
       :proxy="proxy"
       :selected="proxy.name === selectedProxy"
+      :testing="testingNames?.includes(proxy.name)"
       @click="$emit('select', proxy)"
     />
   </div>
@@ -18,6 +19,8 @@ defineProps<{
   proxies: Proxy[]
   columns?: number
   selectedProxy?: string
+  /** 正在测延迟的节点名称列表 */
+  testingNames?: string[]
 }>()
 
 defineEmits<{

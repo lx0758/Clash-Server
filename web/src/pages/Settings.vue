@@ -73,8 +73,8 @@
 
           <el-alert
             v-if="saveResult"
-            :type="saveResult.core_error ? 'error' : 'success'"
-            :title="saveResult.core_error ? '配置已保存，但 Core 启动失败: ' + saveResult.core_error : '配置已保存，Core 重启成功'"
+            :type="saveResult.partial ? 'warning' : saveResult.core_error ? 'error' : 'success'"
+            :title="saveResultTitle"
             :closable="false"
             show-icon
             class="save-alert"
@@ -92,17 +92,31 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useConfigStore } from '@/stores/config'
+import { useToastStore } from '@/stores/toast'
 import { useBreakpoint } from '@/composables/useBreakpoint'
+import { ApiError } from '@/utils/request'
 import type { CoreConfig } from '@/types/api'
 
 const configStore = useConfigStore()
+const toastStore = useToastStore()
 const { isMobile } = useBreakpoint()
 
 const saving = ref(false)
-const saveResult = ref<{ core_error?: string } | null>(null)
+const saveResult = ref<{ core_error?: string; partial?: boolean } | null>(null)
+
+/**
+ * 需要重启核心才能生效的配置项。
+ *
+ * 变更其中任意一项都会导致核心重启, 当前连接会被断开,
+ * 保存前需明确告知用户。
+ */
+const RESTART_REQUIRED_KEYS = ['mixed_port', 'api_secret', 'allow_lan', 'ipv6'] as const
+
+/** 保存前的配置快照, 用于判断哪些键发生了变化 */
+let originalConfig: CoreConfig
 
 const coreConfig = reactive<CoreConfig>({
   api_host: '',
@@ -115,22 +129,71 @@ const coreConfig = reactive<CoreConfig>({
   ipv6: false,
 })
 
+originalConfig = { ...coreConfig }
+
 onMounted(async () => {
   await configStore.fetchConfig()
   if (configStore.config?.core) {
     Object.assign(coreConfig, configStore.config.core)
   }
+  originalConfig = { ...coreConfig }
+})
+
+/**
+ * 判断本次变更是否涉及需要重启核心的配置项。
+ */
+const needsRestartConfirm = (): boolean => {
+  return RESTART_REQUIRED_KEYS.some(
+    key => originalConfig[key] !== coreConfig[key]
+  )
+}
+
+/** 保存结果的展示文案, 区分成功 / 半成功 / 完全失败三种语义 */
+const saveResultTitle = computed(() => {
+  if (!saveResult.value) return ''
+  if (saveResult.value.partial) {
+    return `配置已保存，但核心未生效：${saveResult.value.core_error || '核心应用失败'}。请检查核心状态或手动重启核心。`
+  }
+  if (saveResult.value.core_error) {
+    return `配置保存失败：${saveResult.value.core_error}`
+  }
+  return '配置已保存，核心已生效'
 })
 
 const saveConfig = async () => {
+  // 端口类变更会重启核心并断开当前连接, 需先确认
+  if (needsRestartConfirm()) {
+    try {
+      await ElMessageBox.confirm(
+        '此操作将重启核心并断开当前连接, 确定继续吗?',
+        '确认重启核心',
+        { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消' }
+      )
+    } catch {
+      // 用户取消
+      return
+    }
+  }
+
   saving.value = true
   saveResult.value = null
   try {
     const result = await configStore.updateCoreConfig(coreConfig)
     saveResult.value = result
-    ElMessage.success('配置已保存')
+    originalConfig = { ...coreConfig }
+    toastStore.success('配置已保存并生效')
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '保存失败')
+    // 三态结果: 完全成功 / 已保存但核心未生效 / 完全失败
+    if (e instanceof ApiError && e.isPartialSuccess) {
+      saveResult.value = { core_error: e.coreError, partial: true }
+      originalConfig = { ...coreConfig }
+      toastStore.warning(
+        `配置已保存但核心未生效：${e.coreError || '核心应用失败'}。请检查核心状态或手动重启核心。`
+      )
+    } else {
+      // 完全失败时错误提示已由请求拦截器弹出
+      saveResult.value = { core_error: e instanceof Error ? e.message : '保存失败' }
+    }
   } finally {
     saving.value = false
   }

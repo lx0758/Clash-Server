@@ -17,6 +17,8 @@ type CoreConfig struct {
 	AllowLan  bool
 	LogLevel  string
 	IPv6      bool
+	// DelayConcurrency 逐节点测延迟时的并发上限
+	DelayConcurrency int
 }
 
 func DefaultServerConfig() *ServerConfig {
@@ -29,12 +31,13 @@ func DefaultServerConfig() *ServerConfig {
 
 func DefaultCoreConfig() *CoreConfig {
 	return &CoreConfig{
-		Mode:      "rule",
-		APIHost:   "127.0.0.1",
-		APIPort:   9090,
-		MixedPort: 7890,
-		AllowLan:  true,
-		LogLevel:  "info",
-		IPv6:      false,
+		Mode:             "rule",
+		APIHost:          "127.0.0.1",
+		APIPort:          9090,
+		MixedPort:        7890,
+		AllowLan:         true,
+		LogLevel:         "info",
+		IPv6:             false,
+		DelayConcurrency: 10,
 	}
 }

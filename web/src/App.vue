@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import ToastHost from '@/components/ToastHost.vue'
+import LoadingBar from '@/components/LoadingBar.vue'
 </script>
 
 <template>
+  <LoadingBar />
   <router-view />
+  <ToastHost />
 </template>
 
 <style>

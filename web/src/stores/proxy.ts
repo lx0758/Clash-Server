@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { proxyApi, type ProxyMode } from '@/api/proxy'
 import type { Proxy, ProxyGroup, MihomoProxy, MihomoProxyGroup } from '@/types/api'
+import type { DelayResult } from '@/composables/useWebSocket'
 
 export type SortType = 'default' | 'delay-asc' | 'delay-desc' | 'name'
 
@@ -93,20 +94,29 @@ export const useProxyStore = defineStore('proxy', () => {
 
   const globalProxy = computed(() => rawProxies.value['GLOBAL'])
 
-  const fetchProxies = async () => {
-    loading.value = true
+  /**
+   * 拉取代理列表。
+   * silent 为 true 时不设置全局 loading, 用于测延迟完成后的静默同步,
+   * 避免整页塌陷为骨架屏。
+   */
+  const fetchProxies = async (silent = false) => {
+    if (!silent) {
+      loading.value = true
+    }
     try {
       const res = await proxyApi.list()
       rawProxies.value = res.data.data.proxies
     } finally {
-      loading.value = false
+      if (!silent) {
+        loading.value = false
+      }
     }
   }
 
   const fetchMode = async () => {
     try {
-      const result = await proxyApi.getMode()
-      mode.value = result.mode
+      const res = await proxyApi.getMode()
+      mode.value = res.data.data.mode
     } catch {
       mode.value = 'rule'
     }
@@ -117,14 +127,31 @@ export const useProxyStore = defineStore('proxy', () => {
     mode.value = newMode
   }
 
+  /**
+   * 切换代理组选中的节点。
+   * 采用乐观更新: 立即反映用户选择, 服务端拒绝时回滚。
+   */
   const selectProxy = async (group: string, name: string) => {
-    await proxyApi.select(group, name)
     const g = rawProxies.value[group] as MihomoProxyGroup | undefined
+    const previous = g?.now
     if (g) {
       rawProxies.value = {
         ...rawProxies.value,
         [group]: { ...g, now: name }
       }
+    }
+    try {
+      await proxyApi.select(group, name)
+    } catch (err) {
+      // 回滚到切换前的节点
+      const cur = rawProxies.value[group] as MihomoProxyGroup | undefined
+      if (cur && previous !== undefined) {
+        rawProxies.value = {
+          ...rawProxies.value,
+          [group]: { ...cur, now: previous }
+        }
+      }
+      throw err
     }
   }
 
@@ -158,13 +185,44 @@ export const useProxyStore = defineStore('proxy', () => {
   }
 
   const checkDelay = async (proxyName: string): Promise<number> => {
-    const result = await proxyApi.checkDelay(proxyName)
-    return result.delay
+    const res = await proxyApi.checkDelay(proxyName)
+    return res.data.data.delay
   }
 
-  const checkGroupDelay = async (groupName: string) => {
-    await proxyApi.checkGroupDelay(groupName)
-    await fetchProxies()
+  /**
+   * 启动组内逐节点延迟测试。
+   *
+   * 触发后立即返回, 各节点的延迟结果通过 WebSocket 的 delay 消息陆续送达,
+   * 由 handleDelayResult 逐个更新, 实现"快的先显示"。
+   */
+  const startGroupDelayTest = async (groupName: string) => {
+    return proxyApi.startGroupDelayTest(groupName)
+  }
+
+  /**
+   * 处理单个节点的延迟结果。
+   * 只更新目标节点的 delay 字段, 不触碰列表整体。
+   */
+  const handleDelayResult = (result: DelayResult) => {
+    if (!result.name) return
+    const target = rawProxies.value[result.name] as MihomoProxy | undefined
+    if (!target) return
+
+    const delay = result.error ? 0 : (result.delay ?? 0)
+    const history = [...(target.history || []), { delay, time: '' }]
+    rawProxies.value = {
+      ...rawProxies.value,
+      [result.name]: { ...target, history },
+    }
+  }
+
+  /**
+   * 测延迟全部完成后的静默同步。
+   * 单节点测速会把延迟写入核心的代理历史, 需要重新拉取以同步。
+   * 使用静默模式, 不触发整页骨架屏。
+   */
+  const syncAfterDelayTest = async () => {
+    await fetchProxies(true)
   }
 
   return {
@@ -184,6 +242,8 @@ export const useProxyStore = defineStore('proxy', () => {
     setGroupFilter,
     setGroupSort,
     checkDelay,
-    checkGroupDelay,
+    startGroupDelayTest,
+    handleDelayResult,
+    syncAfterDelayTest,
   }
 })

@@ -2,7 +2,21 @@ import { ref } from 'vue'
 import type { Traffic, CoreStatus, Connection, LogData, MemoryData } from '@/types/api'
 import { useSystemStore } from '@/stores/system'
 
-type MessageType = 'traffic' | 'connections' | 'logs' | 'core_status' | 'memory'
+type MessageType = 'traffic' | 'connections' | 'logs' | 'core_status' | 'memory' | 'delay'
+
+/** 测延迟过程中单个节点的延迟结果 */
+export interface DelayResult {
+  group: string
+  name?: string
+  delay?: number
+  done?: boolean
+  error?: string
+}
+
+/** 延迟结果订阅者 */
+type DelayListener = (result: DelayResult) => void
+
+const delayListeners = new Set<DelayListener>()
 
 interface WebSocketMessage {
   type: MessageType
@@ -23,7 +37,7 @@ const coreStatus = ref<CoreStatus>({ running: false })
 const connections = ref<ConnectionsState>({ connections: [], history: [], downloadTotal: 0, uploadTotal: 0 })
 const logs = ref<LogData[]>([])
 const memory = ref<MemoryData>({ inuse: 0, oslimit: 0 })
-const subscribedTypes = ref<Set<MessageType>>(new Set(['traffic', 'connections', 'logs', 'core_status', 'memory']))
+const subscribedTypes = ref<Set<MessageType>>(new Set(['traffic', 'connections', 'logs', 'core_status', 'memory', 'delay']))
 let reconnectTimer: number | null = null
 let previousConnectionIds = new Set<string>()
 
@@ -103,6 +117,17 @@ const connect = () => {
       case 'memory':
         memory.value = msg.data as MemoryData
         break
+      case 'delay': {
+        const delayData = msg.data as DelayResult
+        delayListeners.forEach(listener => {
+          try {
+            listener(delayData)
+          } catch {
+            // 单个监听器异常不影响其他监听器
+          }
+        })
+        break
+      }
       case 'core_status':
         const status = msg.data as CoreStatus
         coreStatus.value = status
@@ -151,12 +176,26 @@ const clearLogs = () => {
   logs.value = []
 }
 
+/**
+ * 订阅延迟测试结果。
+ * 返回取消订阅函数。
+ */
+const onDelay = (listener: DelayListener) => {
+  delayListeners.add(listener)
+  // 确保已订阅 delay 类型
+  subscribe(['delay'])
+  return () => {
+    delayListeners.delete(listener)
+  }
+}
+
 export function useWebSocket() {
   return {
     connect,
     disconnect,
     subscribe,
     unsubscribe,
+    onDelay,
     clearLogs,
     connected,
     traffic,

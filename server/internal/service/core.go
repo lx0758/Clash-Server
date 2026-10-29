@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +61,9 @@ type CoreService struct {
 	wsConns        map[string]*websocket.Conn
 	wsStopChan     chan struct{}
 	wsDialer       websocket.Dialer
+	// lifecycleCtx 跟随核心生命周期, 核心停止时取消, 用于终止进行中的测延迟任务
+	lifecycleCtx    context.Context
+	lifecycleCancel context.CancelFunc
 }
 
 var globalCoreService *CoreService
@@ -87,6 +92,28 @@ func (cs *CoreService) SetHub(hub *ws.Hub) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	cs.hub = hub
+}
+
+// lifecycleContext 返回跟随核心生命周期的上下文, 核心停止时该上下文被取消。
+func (cs *CoreService) lifecycleContext() context.Context {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if cs.lifecycleCtx == nil {
+		cs.lifecycleCtx, cs.lifecycleCancel = context.WithCancel(context.Background())
+	}
+	return cs.lifecycleCtx
+}
+
+// cancelLifecycle 取消生命周期上下文, 终止所有进行中的测延迟任务。
+func (cs *CoreService) cancelLifecycle() {
+	cs.mu.Lock()
+	cancel := cs.lifecycleCancel
+	cs.lifecycleCtx = nil
+	cs.lifecycleCancel = nil
+	cs.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (cs *CoreService) SetOnStatusChange(callback func(status CoreStatus)) {
@@ -139,7 +166,8 @@ func (cs *CoreService) IsRunning() bool {
 
 func (cs *CoreService) GetProxies() (map[string]interface{}, error) {
 	if !cs.IsRunning() {
-		return map[string]interface{}{"proxies": map[string]interface{}{}}, nil
+		// 核心未运行时返回错误, 避免调用方把"核心没跑"误读为"没有代理"
+		return nil, fmt.Errorf("core is not running")
 	}
 	var result map[string]interface{}
 	if err := cs.apiRequest("GET", "/proxies", nil, &result); err != nil {
@@ -157,7 +185,7 @@ func (cs *CoreService) SelectProxy(group, name string) error {
 
 func (cs *CoreService) GetConnections() ([]interface{}, error) {
 	if !cs.IsRunning() {
-		return []interface{}{}, nil
+		return nil, fmt.Errorf("core is not running")
 	}
 	var result struct {
 		Connections []interface{} `json:"connections"`
@@ -195,7 +223,7 @@ func (cs *CoreService) GetTraffic() (map[string]interface{}, error) {
 
 func (cs *CoreService) GetRules() ([]interface{}, error) {
 	if !cs.IsRunning() {
-		return []interface{}{}, nil
+		return nil, fmt.Errorf("core is not running")
 	}
 	var result struct {
 		Rules []interface{} `json:"rules"`
@@ -236,7 +264,7 @@ func (cs *CoreService) CheckGroupDelay(groupName string, testURL string, timeout
 
 func (cs *CoreService) GetMode() (string, error) {
 	if !cs.IsRunning() {
-		return "rule", nil
+		return "", fmt.Errorf("core is not running")
 	}
 	var result struct {
 		Mode string `json:"mode"`
@@ -296,7 +324,17 @@ func (cs *CoreService) apiRequest(method, path string, body interface{}, result 
 	defer resp.Body.Close()
 	log.Printf("[CoreService] API response: %s %s -> %d", method, path, resp.StatusCode)
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("API request failed")
+		// 读取核心返回的错误正文, 便于上层透传具体原因
+		// (如 YAML 语法错误), 而不是只给出泛化的失败信息
+		errBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("[CoreService] Failed to read error response body: %v", readErr)
+		}
+		detail := strings.TrimSpace(string(errBody))
+		if detail == "" {
+			return fmt.Errorf("核心 API 请求失败: %s %s 返回 %d", method, path, resp.StatusCode)
+		}
+		return fmt.Errorf("核心 API 请求失败: %s %s 返回 %d: %s", method, path, resp.StatusCode, detail)
 	}
 	if len(result) > 0 && result[0] != nil {
 		return json.NewDecoder(resp.Body).Decode(result[0])
@@ -404,7 +442,7 @@ func (cs *CoreService) start() error {
 		}
 	}
 
-	if result := cs.ApplyConfig(); result.Error != nil {
+	if result := cs.applyConfigToCore(); result.Error != nil {
 		log.Printf("[CoreService] Failed to apply config: %v", result.Error)
 	}
 
@@ -429,6 +467,8 @@ func (cs *CoreService) stop() error {
 	cs.mu.Unlock()
 
 	cs.stopWSProxies()
+	// 核心停止, 终止进行中的测延迟任务, 避免 goroutine 泄漏
+	cs.cancelLifecycle()
 
 	if err := cs.cmd.Process.Signal(os.Interrupt); err != nil {
 		cs.cmd.Process.Kill()
@@ -589,27 +629,182 @@ func (cs *CoreService) needsRestart(oldConfig, newConfig map[string]interface{})
 	return false
 }
 
-func (cs *CoreService) ApplyConfig() ApplyConfigResult {
+// mergeConfig 合并当前订阅与自定义配置, 返回合并结果与其 YAML 表示。
+//
+// 合并失败时返回错误, 不静默回退最小配置。
+func (cs *CoreService) mergeConfig() (map[string]interface{}, string, error) {
 	merger := NewMergerService()
 	mergedConfig, err := merger.Merge()
 	if err != nil {
-		mergedConfig = merger.GetMinimalConfig()
+		// 合并失败时不得以最小配置或其他替代配置静默下发
+		return nil, "", fmt.Errorf("合并配置失败: %w", err)
 	}
 
 	yamlConfig, err := merger.GenerateYAML(mergedConfig)
 	if err != nil {
-		return ApplyConfigResult{Error: err}
+		return nil, "", fmt.Errorf("生成配置失败: %w", err)
 	}
+	return mergedConfig, yamlConfig, nil
+}
+
+// saveLastConfig 记录当前生效的配置, 用于下次变更比对。
+func (cs *CoreService) saveLastConfig(mergedConfig map[string]interface{}) {
 	cs.mu.Lock()
 	cs.lastConfig = mergedConfig
 	cs.mu.Unlock()
+}
 
-	if !cs.needsRestart(cs.getLastConfig(), mergedConfig) {
+// ApplyConfig 合并当前配置并下发到核心。
+//
+// 语义约定:
+//   - 合并失败: 显式返回错误, 核心继续运行原有配置, 不静默回退最小配置
+//   - 需要重启的键有变化: 走软重启, 软重启失败降级为杀进程重启
+//   - 其余情况: 走热重载
+func (cs *CoreService) ApplyConfig() ApplyConfigResult {
+	mergedConfig, yamlConfig, err := cs.mergeConfig()
+	if err != nil {
+		return ApplyConfigResult{Error: err}
+	}
+
+	// 先取旧配置快照完成比较, 再写入新配置。
+	// 若先写入再比较, 比较的是同一份 map, needsRestart 恒为 false。
+	oldConfig := cs.getLastConfig()
+	needRestart := cs.needsRestart(oldConfig, mergedConfig)
+
+	cs.saveLastConfig(mergedConfig)
+
+	if !needRestart {
 		err = cs.HotReload(yamlConfig)
 		return ApplyConfigResult{HotReloaded: true, Error: err}
-	} else {
-		err = cs.SoftRestart(yamlConfig)
-		return ApplyConfigResult{HotReloaded: true, Error: err}
+	}
+
+	// 软重启路径, 失败时降级为杀进程重启
+	err = cs.restartWithFallback(yamlConfig)
+	return ApplyConfigResult{Restarted: true, Error: err}
+}
+
+// applyConfigToCore 合并当前配置并热重载到核心, 不做重启判定。
+//
+// 用于核心刚启动的场景: 此时核心是全新进程, 无需重启, 只需加载配置。
+// 独立于 ApplyConfig 是为了避免与降级重启路径形成递归调用
+// (restartWithFallback -> Restart -> start -> ApplyConfig -> restartWithFallback)。
+func (cs *CoreService) applyConfigToCore() ApplyConfigResult {
+	mergedConfig, yamlConfig, err := cs.mergeConfig()
+	if err != nil {
+		return ApplyConfigResult{Error: err}
+	}
+	cs.saveLastConfig(mergedConfig)
+	err = cs.HotReload(yamlConfig)
+	return ApplyConfigResult{HotReloaded: true, Error: err}
+}
+
+// restartWithFallback 先应用配置再重启核心, 软重启失败或未实际生效时降级为杀进程重启。
+//
+// 注意顺序: 必须先热重载再软重启。核心的 /restart 接口以内存中的当前配置
+// 重启, 若不先下发新配置, 重启后仍运行旧配置。
+//
+// 降级重启的核心以最小配置启动, 因此重启成功后需重新应用完整配置。
+// 两条路径都失败时返回非空错误, 不得让调用方误以为核心已生效。
+func (cs *CoreService) restartWithFallback(yamlConfig string) error {
+	if err := cs.HotReload(yamlConfig); err != nil {
+		return fmt.Errorf("应用配置失败: %w", err)
+	}
+
+	err := cs.SoftRestart(yamlConfig)
+	if err == nil {
+		// 软重启接口返回成功不代表变更已生效:
+		// 端口类配置需重新绑定套接字, 软重启不会真正生效
+		if verifyErr := cs.verifyRestartApplied(); verifyErr != nil {
+			log.Printf("[CoreService] Soft restart returned success but change not applied (%v), falling back to kill restart", verifyErr)
+			err = verifyErr
+		} else {
+			return nil
+		}
+	}
+	log.Printf("[CoreService] Soft restart failed, falling back to kill restart: %v", err)
+
+	if restartErr := cs.Restart(); restartErr != nil {
+		return fmt.Errorf("软重启失败 (%v), 降级重启也失败: %w", err, restartErr)
+	}
+
+	// 重启后核心运行的是最小配置, 需重新应用完整配置
+	if reloadErr := cs.HotReload(yamlConfig); reloadErr != nil {
+		return fmt.Errorf("软重启失败 (%v), 降级重启成功但重新应用配置失败: %w", err, reloadErr)
+	}
+	return nil
+}
+
+// restartVerifyKeys 需要重启才能生效、且可从核心读取以校验的配置项。
+var restartVerifyKeys = append([]string{"allow-lan"}, RestartRequiredKeys...)
+
+// verifyRestartApplied 校验需要重启才生效的配置项是否已在核心侧实际生效。
+//
+// 软重启对端口类配置只是重置而非重新绑定, 接口返回成功但变更并未生效,
+// 因此必须校验实际状态, 未生效时需要降级为杀进程重启。
+func (cs *CoreService) verifyRestartApplied() error {
+	// 核心重启后需要一点时间才能提供查询接口
+	var current map[string]interface{}
+	var lastErr error
+	for i := 0; i < 5; i++ {
+		if err := cs.apiRequest("GET", "/configs", nil, &current); err != nil {
+			lastErr = err
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return fmt.Errorf("读取核心配置失败: %w", lastErr)
+	}
+
+	target := cs.getLastConfig()
+	for _, key := range restartVerifyKeys {
+		want, ok := target[key]
+		if !ok || want == nil {
+			// 该键本次未参与变更, 无需校验
+			continue
+		}
+		got, has := current[key]
+		if !has {
+			// 核心不返回该键(如 secret), 无法确认是否生效, 保守判定为未生效
+			return fmt.Errorf("%s 无法确认生效状态", key)
+		}
+		if !reflect.DeepEqual(normalizeConfigValue(want), normalizeConfigValue(got)) {
+			return fmt.Errorf("%s 未生效: 期望 %v, 实际 %v", key, want, got)
+		}
+	}
+	return nil
+}
+
+// normalizeConfigValue 归一化配置值的数值类型, 消除 JSON 往返产生的
+// int 与 float64 差异, 使配置比较结果可靠。
+func normalizeConfigValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case int:
+		return float64(t)
+	case int8:
+		return float64(t)
+	case int16:
+		return float64(t)
+	case int32:
+		return float64(t)
+	case int64:
+		return float64(t)
+	case uint:
+		return float64(t)
+	case uint8:
+		return float64(t)
+	case uint16:
+		return float64(t)
+	case uint32:
+		return float64(t)
+	case uint64:
+		return float64(t)
+	case float32:
+		return float64(t)
+	default:
+		return v
 	}
 }
 

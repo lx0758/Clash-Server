@@ -17,7 +17,7 @@
       <el-option label="延迟降序" value="delay-desc" />
       <el-option label="名称" value="name" />
     </el-select>
-    <el-button type="primary" size="default" @click="$emit('checkAll')">
+    <el-button type="primary" size="default" :loading="checking" @click="$emit('checkAll')">
       测延迟
     </el-button>
   </div>
@@ -33,6 +33,8 @@ const props = defineProps<{
   initialFilterText?: string
   initialSortType?: SortType
   isMobile?: boolean
+  /** 该组是否正在测延迟 */
+  checking?: boolean
 }>()
 
 const emit = defineEmits<{

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -88,6 +89,12 @@ func (h *CustomizationHandler) Update(c *gin.Context) {
 		return
 	}
 
+	// 保存前读取旧配置, 核心应用失败时用于回滚
+	oldCustomization, getErr := h.service.GetBySubscriptionID(uint(id))
+	if getErr != nil {
+		oldCustomization = nil
+	}
+
 	customization := &model.SubscriptionCustomization{
 		SubscriptionID:   uint(id),
 		ProxyInsert:      req.ProxyInsert,
@@ -108,19 +115,31 @@ func (h *CustomizationHandler) Update(c *gin.Context) {
 		return
 	}
 
+	// 保存之后的任何失败都回滚到保存前状态, 避免数据库与核心不一致
+	rollback := func() {
+		restoreCustomization(h.service, uint(id), oldCustomization)
+	}
+
 	mergedConfig, err := h.merger.MergeForSubscription(uint(id))
 	if err != nil {
+		rollback()
 		c.JSON(http.StatusOK, response.BadRequest("合并配置失败: "+err.Error()))
 		return
 	}
 
 	if err := h.merger.Validate(mergedConfig); err != nil {
+		rollback()
 		c.JSON(http.StatusOK, response.BadRequest("配置验证失败: "+err.Error()))
 		return
 	}
 
 	result := h.coreService.ApplyConfig()
 	if result.Error != nil {
+		// 回滚数据库中的自定义配置, 并让核心重新应用回滚后的配置
+		rollback()
+		if retry := h.coreService.ApplyConfig(); retry.Error != nil {
+			log.Printf("[CustomizationHandler] 核心应用回滚配置失败: %v", retry.Error)
+		}
 		c.JSON(http.StatusOK, response.Error(response.CodeConfigError, "核心应用失败: "+result.Error.Error()))
 		return
 	}

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# clash-core-integration 规格说明
+
+## Purpose
+
+定义面板与 Mihomo 核心的集成约定：核心的生命周期管理、配置变更的智能应用、启动错误的暴露方式，以及核心不可用时的降级行为。
+
+## Requirements
 
 ### Requirement: Core 自动启动
 系统 SHALL 在 Server 启动时自动启动 Mihomo 核心，无论是否有订阅配置。
@@ -39,6 +45,16 @@
 - **THEN** 保存成功后智能应用配置
 - **AND** 返回操作结果
 
+#### Scenario: 应用失败时的结果表达
+- **WHEN** 配置已保存但智能应用失败
+- **THEN** 返回 code 为 1007 且携带 partial_success 标记
+- **AND** 返回体说明未生效原因
+
+#### Scenario: 自定义配置应用失败时回滚
+- **WHEN** 自定义配置保存后核心应用失败
+- **THEN** 已保存的自定义配置回滚为保存前的状态
+- **AND** 返回错误说明应用失败
+
 ### Requirement: Core 启动错误暴露
 系统 SHALL 显式暴露 Core 启动失败的错误信息。
 
@@ -51,7 +67,8 @@
 
 #### Scenario: 配置变更 API 返回 Core 错误
 - **WHEN** 配置保存成功但 Core 启动失败
-- **THEN** 返回 {"code": 0, "data": {"core_error": "..."}}
+- **THEN** 返回 {"code": 1007, "data": {"core_error": "...", "partial_success": true}}
+- **AND** 客户端据此提示"已保存但未生效"而非"操作失败"
 
 ### Requirement: Core 崩溃处理
 系统 SHALL 检测 Core 崩溃并更新状态，不自动重启。
@@ -101,10 +118,31 @@
 - **WHEN** Core 未运行时通过 GET /api/system/info 获取流量
 - **THEN** 返回 traffic: null
 
-## REMOVED Requirements
+### Requirement: 核心数据查询的失败语义
+系统 SHALL 在核心不可用时明确返回失败，而非以空结果伪装成功。
 
-### Requirement: 手动启停 API (已移除)
-~~系统 SHALL 提供手动启动/停止/重启 Core 的 API。~~
+#### Scenario: 核心未运行时的代理查询
+- **WHEN** 核心未运行且请求代理列表
+- **THEN** 返回非零业务状态码
+- **AND** 返回体说明核心未运行
+
+#### Scenario: 核心未运行时的规则与连接查询
+- **WHEN** 核心未运行且请求规则列表或连接列表
+- **THEN** 返回非零业务状态码
+- **AND** 返回体说明核心未运行
+
+#### Scenario: 核心错误信息透传
+- **WHEN** 核心 API 调用失败并返回了错误响应
+- **THEN** 返回给客户端的错误信息包含核心的原始错误内容
+- **AND** 不得以泛化文案替代核心的具体错误
+
+## 废弃条目
+
+以下能力已废弃, 不再作为有效需求, 仅作历史记录保留。
+
+### 手动启停 API (已移除)
+
+系统曾 SHALL 提供手动启动/停止/重启 Core 的 API。
 
 已移除的 API:
 - GET /api/core/version
@@ -116,14 +154,16 @@
 
 **移除原因:** Core 现在完全自动管理，用户无需手动操作。
 
-### Requirement: 配置变更自动重启 (已移除)
-~~系统 SHALL 在配置变更时自动重启 Core。~~
+### 配置变更自动重启 (已移除)
+
+系统曾 SHALL 在配置变更时自动重启 Core。
 
 **移除原因:** 替换为智能应用配置（热重载优先，软重启兜底）
 **迁移方式:** 使用 ApplyConfig 方法，通过 Mihomo API 管理配置
 
-### Requirement: 使用临时配置文件启动 (已移除)
-~~系统 SHALL 使用临时配置文件启动 Mihomo。~~
+### 使用临时配置文件启动 (已移除)
+
+系统曾 SHALL 使用临时配置文件启动 Mihomo。
 
 **移除原因:** 改为最小配置启动 + API 应用全量配置
 **迁移方式:** 启动时通过 -config 参数传入 Base64 编码的最小配置，启动后调用 HotReload 应用全量配置

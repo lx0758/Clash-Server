@@ -20,7 +20,8 @@ func NewConnectionHandler() *ConnectionHandler {
 func (h *ConnectionHandler) List(c *gin.Context) {
 	connections, err := h.coreService.GetConnections()
 	if err != nil {
-		c.JSON(http.StatusOK, response.Success(gin.H{"connections": []interface{}{}}))
+		// 核心不可用时返回业务错误码, 不得以空连接列表伪装成功
+		c.JSON(http.StatusOK, response.CoreError("核心未运行，无法获取连接列表: "+err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"connections": connections}))

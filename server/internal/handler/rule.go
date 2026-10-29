@@ -22,7 +22,8 @@ func NewRuleHandler() *RuleHandler {
 func (h *RuleHandler) GetRules(c *gin.Context) {
 	rules, err := h.coreService.GetRules()
 	if err != nil {
-		c.JSON(http.StatusOK, response.Success(gin.H{"rules": []interface{}{}}))
+		// 核心不可用时返回业务错误码, 不得以空规则列表伪装成功
+		c.JSON(http.StatusOK, response.CoreError("核心未运行，无法获取规则列表: "+err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, response.Success(gin.H{"rules": rules}))

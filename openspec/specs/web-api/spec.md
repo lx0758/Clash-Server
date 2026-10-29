@@ -1,4 +1,10 @@
-## ADDED Requirements
+# web-api 规格说明
+
+## Purpose
+
+定义面板对外 REST 接口的统一约定：响应结构、业务状态码语义，以及配置变更等关键接口的返回内容契约。
+
+## Requirements
 
 ### Requirement: RESTful API 设计
 系统 SHALL 提供遵循 RESTful 规范的 API。
@@ -25,6 +31,12 @@
 - **THEN** 返回 {"code": <业务状态码>, "message": "...", "detail": "..."}
 - **AND** 不使用 HTTP 状态码表达业务状态
 
+#### Scenario: 部分成功响应
+- **WHEN** 变更已持久化但未在运行中的核心生效
+- **THEN** 返回 {"code": 1007, "message": "...", "data": {..., "partial_success": true}}
+- **AND** data 中携带未生效的原因
+- **AND** 客户端可据此区分"未生效"与"操作失败"
+
 #### Scenario: 列表响应
 - **WHEN** 返回列表资源
 - **THEN** 包含 meta 字段如 {"total": 100, "page": 1, "page_size": 20}
@@ -48,6 +60,16 @@
 | 422 | 业务逻辑错误 |
 | 500 | 服务器内部错误 |
 | 503 | 服务不可用 |
+
+#### Scenario: 核心未生效状态码
+- **WHEN** 变更已持久化但核心重载失败
+- **THEN** 返回 code 为 1007
+- **AND** 响应携带 partial_success 标记
+
+#### Scenario: 核心不可用时的数据查询
+- **WHEN** 查询依赖运行中核心的数据（代理、规则、连接）且核心不可用
+- **THEN** 返回非零业务状态码
+- **AND** 不得以空结果集伪装为成功的查询
 
 ### Requirement: 配置管理
 系统 SHALL 提供面板配置的获取和更新。
@@ -97,8 +119,14 @@
 
 #### Scenario: 配置保存成功 + Core 启动失败
 - **WHEN** 配置变更成功但 Core 启动失败
-- **THEN** 返回 {"code": 0, "message": "success", "data": {"core_error": "..."}}
+- **THEN** 返回 {"code": 1007, "message": "...", "data": {"core_error": "...", "partial_success": true}}
+- **AND** 客户端据此以警告语义而非错误语义提示用户
 
 #### Scenario: 配置保存失败
 - **WHEN** 配置验证失败
 - **THEN** 返回 {"code": 400, "message": "Invalid config", "data": null}
+
+#### Scenario: 核心错误原因透传
+- **WHEN** 核心返回失败响应
+- **THEN** 返回的 core_error 包含核心返回的原始错误信息
+- **AND** 不得以泛化文案替代核心的具体错误
