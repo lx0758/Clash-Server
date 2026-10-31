@@ -286,6 +286,8 @@ const handleSave = async () => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 54px);
+  height: calc(100dvh - 54px);
+  height: calc(var(--app-height, 100dvh) - 54px);
   overflow: hidden;
   padding: 12px;
 }

@@ -219,6 +219,8 @@ onUnmounted(() => {
 <style scoped>
 .layout {
   height: 100vh;
+  height: 100dvh;
+  height: var(--app-height, 100vh);
   background: #f1f5f9;
 }
 

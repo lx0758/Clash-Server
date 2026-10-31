@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 订阅自定义规格说明
+
+## Purpose
+
+定义订阅自定义能力的契约：代理/代理组/规则/全局配置的自定义覆盖、后处理脚本、合并顺序、配置校验与错误回滚，以及自定义 API 与前端对话框。
+
+## Requirements
 
 ### Requirement: 订阅自定义存储
 
@@ -191,16 +197,6 @@
 - **WHEN** 用户点击保存按钮
 - **THEN** 系统在发送到后端之前校验所有 YAML 字段
 
-## REMOVED Requirements
+## 历史变更说明
 
-### Requirement: 规则管理（来自 rule-management）
-
-**移除原因**: 替换为统一的订阅自定义配置。
-
-**迁移方式**: 使用自定义配置中的 `rule_insert`、`rule_append`、`rule_remove` 字段。
-
-### Requirement: 脚本管理（来自 script-management）
-
-**移除原因**: 替换为统一的订阅自定义配置。
-
-**迁移方式**: 使用自定义配置中的 `script` 字段。
+原"规则管理"与"脚本管理"需求已迁移为独立能力（见 `rule-management` 与 `script-management` 规格）。自定义配置中对应字段：规则使用 `rule_insert`、`rule_append`、`rule_remove`，脚本使用 `script`。

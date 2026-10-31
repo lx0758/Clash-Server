@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 代理管理规格说明
+
+## Purpose
+
+定义代理节点管理的契约：代理节点列表的展示与分组、节点选择与切换、延迟测试的发起与结果展示，以及连接的管理操作。
+
+## Requirements
 
 ### Requirement: 代理节点列表
 系统 SHALL 提供当前可用的代理节点列表。

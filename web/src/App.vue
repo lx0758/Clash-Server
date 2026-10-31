@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import ToastHost from '@/components/ToastHost.vue'
 import LoadingBar from '@/components/LoadingBar.vue'
+import { useAppHeight } from '@/composables/useAppHeight'
+
+useAppHeight()
 </script>
 
 <template>

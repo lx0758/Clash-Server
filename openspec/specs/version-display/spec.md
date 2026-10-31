@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 版本显示规格说明
+
+## Purpose
+
+定义应用版本展示的契约：版本号的来源定义、版本号获取 API 的响应格式，以及前端 UI 在界面上展示版本号的方式。
+
+## Requirements
 
 ### Requirement: 版本号定义
 系统 SHALL 使用统一的版本号格式 `vYYYY.M.NUM`。

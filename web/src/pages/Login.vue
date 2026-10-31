@@ -117,6 +117,8 @@ const handleSubmit = async () => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
+  min-height: var(--app-height, 100vh);
   background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
   padding: 20px;
 }

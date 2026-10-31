@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 代理模式控制规格说明
+
+## Purpose
+
+定义代理模式控制的契约：模式切换（rule/global/direct）、模式配置、状态同步与错误处理。
+
+## Requirements
 
 ### Requirement: 代理模式切换
 系统 SHALL 在仪表盘页面提供代理模式切换功能。

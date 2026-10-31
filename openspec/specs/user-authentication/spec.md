@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 用户认证规格说明
+
+## Purpose
+
+定义用户认证的契约：用户登录与登出流程、当前用户信息获取、密码修改，以及首次使用的初始密码设置约束。
+
+## Requirements
 
 ### Requirement: 用户登录
 系统 SHALL 支持单用户登录认证。

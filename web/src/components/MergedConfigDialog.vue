@@ -81,43 +81,47 @@ const downloadYaml = () => {
 </style>
 
 <style>
-@media (max-width: 768px) {
-  .el-dialog.is-fullscreen {
-    height: 100vh !important;
-    max-height: 100vh !important;
-    margin: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-  }
+/* 布局条件以 .el-dialog.is-fullscreen 为唯一来源（仅 isMobile 时出现，
+   与 useBreakpoint 的 JS 断点天然同源），不使用 @media 断点，避免 768~991px 盲区 */
+.el-dialog.is-fullscreen {
+  height: 100vh;
+  height: 100dvh;
+  height: var(--app-height, 100vh);
+  max-height: 100vh;
+  max-height: 100dvh;
+  max-height: var(--app-height, 100vh);
+  margin: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
 
-  .el-dialog.is-fullscreen .el-dialog__header {
-    flex-shrink: 0 !important;
-  }
+.el-dialog.is-fullscreen .el-dialog__header {
+  flex-shrink: 0 !important;
+}
 
-  .el-dialog.is-fullscreen .el-dialog__body {
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    padding: 12px 0 0 0 !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-  }
+.el-dialog.is-fullscreen .el-dialog__body {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 12px 0 0 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
 
-  .el-dialog.is-fullscreen .header-actions {
-    flex-shrink: 0 !important;
-    margin-bottom: 12px !important;
-    padding: 0 5px !important;
-  }
+.el-dialog.is-fullscreen .header-actions {
+  flex-shrink: 0 !important;
+  margin-bottom: 12px !important;
+  padding: 0 5px !important;
+}
 
-  .el-dialog.is-fullscreen .config-viewer {
-    flex: 1 !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: auto !important;
-    padding: 5px !important;
-    border-radius: 0 !important;
-    background: #f8fafc !important;
-  }
+.el-dialog.is-fullscreen .config-viewer {
+  flex: 1 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  padding: 5px !important;
+  border-radius: 0 !important;
+  background: #f8fafc !important;
 }
 </style>

@@ -151,20 +151,20 @@ watch(() => props.subscription, () => {
 </style>
 
 <style>
-@media (max-width: 768px) {
-  .el-dialog.is-fullscreen .content-editor {
-    flex: 1;
-    min-height: 0;
-  }
+/* 布局条件以 .el-dialog.is-fullscreen 为唯一来源（仅 isMobile 时出现，
+   与 useBreakpoint 的 JS 断点天然同源），不使用 @media 断点，避免 768~991px 盲区 */
+.el-dialog.is-fullscreen .content-editor {
+  flex: 1;
+  min-height: 0;
+}
 
-  .el-dialog.is-fullscreen .content-editor .el-textarea__inner {
-    height: 100% !important;
-    min-height: 100% !important;
-    resize: none !important;
-    border-radius: 0 !important;
-    background: #f8fafc !important;
-    white-space: pre !important;
-    overflow-x: auto !important;
-  }
+.el-dialog.is-fullscreen .content-editor .el-textarea__inner {
+  height: 100% !important;
+  min-height: 100% !important;
+  resize: none !important;
+  border-radius: 0 !important;
+  background: #f8fafc !important;
+  white-space: pre !important;
+  overflow-x: auto !important;
 }
 </style>

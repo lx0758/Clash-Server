@@ -1,4 +1,10 @@
-## ADDED Requirements
+# Core 规则查看器规格说明
+
+## Purpose
+
+定义查看 Clash Core 运行时规则的契约：规则列表的分页展示与性能优化、规则详情查看，以及与 Core API 的数据交互方式。
+
+## Requirements
 
 ### Requirement: Core 规则列表展示
 系统 SHALL 在"规则"页面展示 Clash Core 实时生效的规则列表。
